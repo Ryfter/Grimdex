@@ -17,6 +17,7 @@ Assert 'stanza names the path' ($stanza.Contains('D:\Dev\Grimdex'))
 Assert 'stanza names the project tier' ($stanza.Contains('projects/my-proj/'))
 Assert 'stanza points at GRIMDEX.md' ($stanza.Contains('GRIMDEX.md'))
 Assert 'stanza carries the contribution rule' ($stanza.Contains('PROGRAMMING DECISIONS'))
+Assert 'stanza carries the public engine URL' ($stanza.Contains('https://github.com/Ryfter/Grimdex'))
 
 # --- Set-GrimdexBlock: pure behaviors ---
 $r = Set-GrimdexBlock -Content '' -Stanza $stanza

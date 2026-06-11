@@ -129,6 +129,69 @@ Assert 'overwrite restores mirror content' ((Get-Content (Join-Path $liveRules '
 $r = Sync-GrimdexRules -GrimdexRoot $sandbox -RulesPath $liveRules
 Assert 'no mirror dir -> empty result' (@($r).Count -eq 0)
 
+# --- Install-GrimdexRulesJunction ---
+$rjRoot = Join-Path $sandbox 'grimdex-rules-junction'
+New-FakeGrimdexRepo $rjRoot
+$rjMirror = Join-Path $rjRoot 'universal' 'claude-rules'
+New-Item -ItemType Directory -Force -Path $rjMirror | Out-Null
+[IO.File]::WriteAllText((Join-Path $rjMirror 'a.md'), "rule A`r`nline two`r`n")  # CRLF, like a checkout
+[IO.File]::WriteAllText((Join-Path $rjMirror 'b.md'), "rule B`n")
+
+# missing live dir -> junction created
+$rl = Join-Path $sandbox 'rules-live'
+$r = Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl
+Assert 'rules-junction: missing -> created' ($r.action -eq 'created' -and $null -eq $r.backup)
+Assert 'rules-junction: rules readable through junction' ((Get-Content (Join-Path $rl 'a.md') -Raw).Contains('rule A'))
+
+# linked -> no-op; Sync short-circuits
+$r = Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl
+Assert 'rules-junction: linked -> no-op' ($r.action -eq 'none')
+$r = Sync-GrimdexRules -GrimdexRoot $rjRoot -RulesPath $rl
+Assert 'rules-junction: sync reports linked, copies nothing' (@($r).Count -eq 1 -and @($r)[0].action -eq 'linked')
+(Get-Item $rl -Force).Delete()
+
+# real dir, EOL-only differences -> swapped, backup kept
+New-Item -ItemType Directory -Path $rl | Out-Null
+[IO.File]::WriteAllText((Join-Path $rl 'a.md'), "rule A`nline two`n")  # LF live copy
+[IO.File]::WriteAllText((Join-Path $rl 'b.md'), "rule B`n")
+$r = Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl
+Assert 'rules-junction: matching real dir -> swapped' ($r.action -eq 'swapped')
+Assert 'rules-junction: backup kept with content' ((Get-Content (Join-Path "$rl.bak" 'a.md') -Raw).Contains('rule A'))
+Assert 'rules-junction: linked after swap' ((Get-GrimdexJunctionState -KnowledgePath $rl -Target $rjMirror) -eq 'linked')
+(Get-Item $rl -Force).Delete(); Remove-Item -Recurse -Force "$rl.bak"
+
+# diverged live file -> throws; -Force overrides
+New-Item -ItemType Directory -Path $rl | Out-Null
+[IO.File]::WriteAllText((Join-Path $rl 'a.md'), "locally edited`n")
+$threw = $false
+try { Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl | Out-Null } catch { $threw = $true }
+Assert 'rules-junction: diverged -> throws' $threw
+Assert 'rules-junction: diverged -> live dir untouched' ((Get-GrimdexJunctionState -KnowledgePath $rl -Target $rjMirror) -eq 'real-dir')
+$r = Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl -Force
+Assert 'rules-junction: diverged + -Force -> swapped' ($r.action -eq 'swapped')
+(Get-Item $rl -Force).Delete(); Remove-Item -Recurse -Force "$rl.bak"
+
+# live-only file (no mirror counterpart) -> throws
+New-Item -ItemType Directory -Path $rl | Out-Null
+[IO.File]::WriteAllText((Join-Path $rl 'orphan.md'), "only live`n")
+$threw = $false
+try { Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl | Out-Null } catch { $threw = $true }
+Assert 'rules-junction: live-only file -> throws' $threw
+Remove-Item -Recurse -Force $rl
+
+# existing .bak -> throws even with -Force
+New-Item -ItemType Directory -Path $rl | Out-Null
+New-Item -ItemType Directory -Path "$rl.bak" | Out-Null
+$threw = $false
+try { Install-GrimdexRulesJunction -GrimdexRoot $rjRoot -RulesPath $rl -Force | Out-Null } catch { $threw = $true }
+Assert 'rules-junction: existing .bak -> throws even with -Force' $threw
+Remove-Item -Recurse -Force $rl, "$rl.bak"
+
+# missing mirror dir -> throws
+$threw = $false
+try { Install-GrimdexRulesJunction -GrimdexRoot $target -RulesPath (Join-Path $sandbox 'rules-x') | Out-Null } catch { $threw = $true }
+Assert 'rules-junction: missing mirror -> throws' $threw
+
 # --- invalid target -> throws ---
 $threw = $false
 try { Install-GrimdexJunction -KnowledgePath (Join-Path $sandbox 'x') -Target $sandbox | Out-Null } catch { $threw = $true }

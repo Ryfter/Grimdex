@@ -1,0 +1,6 @@
+# Local agent session state (not knowledge — config snapshots belong in config/)
+# Exception: the committed repo permission settings the scheduled routines rely on.
+.claude/*
+!.claude/settings.json
+# Scheduled-routine transcripts (durable record = the committed logs)
+logs/

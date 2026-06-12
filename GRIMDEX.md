@@ -30,6 +30,11 @@ the owner's instance grows its own rules here via the maintained loop.
    (`git pull --rebase`) — multiple agents may share this repo.
 6. **Keep your instance private** — it will hold personal decision history and
    preferences. (This engine repo is the public template; your data never lives here.)
+7. **Rules trace to evidence, then escalate to enforcement.** Every rule must cite an
+   observed failure or success — never write rules from anticipation (unfollowed rules
+   are noise that erodes adherence to the real ones). A rule still being violated
+   despite emphasis gets converted into something deterministic — a script, hook,
+   gate, or CI check — not more prose. Suggested starter rules: `SUGGESTED-RULES.md`.
 
 ## Routing table — when to read what
 

@@ -28,6 +28,11 @@ A scheduled "librarian" routine keeps it aggressively maintained.
   into a repo's `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, and
   `.github/copilot-instructions.md`, so whatever agent opens the project finds the
   knowledge base and the contribution rule.
+- **Cold-start seeding.** Rules normally earn their way in through observed failures —
+  a fresh instance has none yet. [SUGGESTED-RULES.md](SUGGESTED-RULES.md) carries
+  seven community-converged conventions (each independently advocated by 3+ prominent
+  practitioners), the reasoning behind each, and a paste-into-your-agent prompt that
+  files them through the normal promotions inbox.
 
 ## Quick start
 

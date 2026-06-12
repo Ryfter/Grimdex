@@ -28,6 +28,19 @@ that are referenced elsewhere — flag those.
   sitting only on the local disk (check the known mirrors: `universal/claude-rules/`).
 - **Inbox staleness:** candidates older than 7 days (the sweep should have processed
   or deferred them — staleness means the loop is broken).
+- **Instruction-file health (the law + playbooks).** Adherence degrades with length —
+  frontier models reliably follow ~150–200 instructions and the harness's own system
+  prompt spends ~50 of those — so every line must earn its keep:
+  - *Pruning test:* for each rule line ask "would removing this cause an agent to
+    err?" Flag lines that don't pass — obsolete, never violated anyway, or now
+    enforced by a linter/hook (prose duplicating deterministic enforcement is noise).
+  - *Contradiction check:* two rules in conflict means agents pick one arbitrarily —
+    flag the pair.
+  - *Escalation candidates (law #7):* a rule violated again since the last audit
+    despite emphasis is flagged for conversion to a script/hook/gate.
+  - *Canary check:* the law may carry one harmless canary instruction (e.g. an odd
+    word to include in commit messages); if recent work stopped honoring it, the
+    file isn't being read — flag loudly, that's a loading problem, not a rule problem.
 
 ## 4. Report
 Append ONE entry to `KB-AUDIT-LOG.md` (format at the top of that file): auto-fixes

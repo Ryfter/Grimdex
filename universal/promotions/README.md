@@ -19,3 +19,6 @@ Candidate entry format (append to `<project-id>.md`):
 **Also seen in:** <other projects, if known — acceptance needs ≥2>
 **Filed:** YYYY-MM-DD
 ```
+
+A worked example (sanitized from real use):
+[`examples/promotion-personal-data-tree.md`](../../examples/promotion-personal-data-tree.md).

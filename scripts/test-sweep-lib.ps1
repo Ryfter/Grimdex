@@ -51,6 +51,12 @@ Assert 'stale candidate -> warn' ($stale.Count -eq 1 -and $stale[0].severity -eq
 Assert 'README is not a candidate file' (-not ($inbox | Where-Object project -eq 'README'))
 Remove-Item $cand
 
+# ---------- *.sync.md is NOT a promotion candidate ----------
+Set-Content (Join-Path $kb 'universal' 'promotions' 'laptop.sync.md') `
+    -Value "---`nkind: rule-sync`n---`n## not a candidate heading"
+Assert 'rule-sync file excluded from inbox status' (@(Get-GrimdexInboxStatus -GrimdexRoot $kb).Count -eq 0)
+Remove-Item (Join-Path $kb 'universal' 'promotions' 'laptop.sync.md')
+
 # ---------- dead links ----------
 Set-Content (Join-Path $kb 'projects' 'p1' 'notes.md') -Value "[gone](missing-file.md) and [ok](../../README.md) and [web](https://x.test) and [anchor](#sec)"
 $f = @(Test-GrimdexLinks -GrimdexRoot $kb)
@@ -117,6 +123,13 @@ $threw = $false
 Set-Content (Join-Path $kb 'NOMARK.md') -Value '# no marker'
 try { Add-GrimdexLogEntry -LogPath (Join-Path $kb 'NOMARK.md') -Entry 'x' } catch { $threw = $true }
 Assert 'missing marker -> throws' $threw
+
+# ---------- Sync-GrimdexRepo -Autostash tolerates a dirty tree ----------
+Set-Content (Join-Path $kb 'dirty.txt') -Value 'uncommitted'
+$r = Sync-GrimdexRepo -GrimdexRoot $kb -SkipPush -Autostash
+Assert 'autostash pull succeeds over dirty tree' ($r.pulled)
+Assert 'dirty file restored after autostash' (Test-Path (Join-Path $kb 'dirty.txt'))
+Remove-Item (Join-Path $kb 'dirty.txt')
 
 Remove-Item -Recurse -Force $sandbox
 if ($failures -gt 0) { Write-Host "`n$failures FAILURE(S)" -ForegroundColor Red; exit 1 }

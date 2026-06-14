@@ -1,15 +1,23 @@
 #!/usr/bin/env pwsh
 <#
-  One-command scheduling: registers Grimdex-Daily-Sweep (daily 5:30 am) and
-  Grimdex-Weekly-Audit (Sunday 5:30 am) for the current user, both with
-  StartWhenAvailable (PC off -> runs when next able). Idempotent; -Uninstall removes.
+  One-command scheduling. Role-aware (config/sync.json): the hub registers
+  Grimdex-Daily-Sweep + Grimdex-Weekly-Audit; a spoke registers Grimdex-Daily-Pull.
+  Idempotent; -Uninstall removes all Grimdex tasks. -Role overrides auto-detection.
 #>
 param(
     [string]$GrimdexRoot = (Split-Path $PSScriptRoot -Parent),
+    [ValidateSet('hub', 'spoke')][string]$Role,
     [switch]$Uninstall
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'sync-lib.ps1')      # Get-GrimdexRole (+ sweep-lib)
 . (Join-Path $PSScriptRoot 'schedule-lib.ps1')
 
-$results = if ($Uninstall) { Uninstall-GrimdexSchedule } else { Install-GrimdexSchedule -GrimdexRoot $GrimdexRoot }
+if ($Uninstall) {
+    $results = Uninstall-GrimdexSchedule
+} else {
+    if (-not $Role) { $Role = Get-GrimdexRole -GrimdexRoot $GrimdexRoot }
+    Write-Host "  role: $Role"
+    $results = Install-GrimdexSchedule -GrimdexRoot $GrimdexRoot -Role $Role
+}
 $results | ForEach-Object { Write-Host ("  {0,-11} {1}" -f $_.action, $_.task) }

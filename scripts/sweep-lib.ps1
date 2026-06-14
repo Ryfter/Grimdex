@@ -26,7 +26,8 @@ function Get-GrimdexInboxStatus {
     param([Parameter(Mandatory)][string]$GrimdexRoot)
     $inbox = Join-Path $GrimdexRoot 'universal' 'promotions'
     if (-not (Test-Path $inbox)) { return @() }
-    $rows = foreach ($f in Get-ChildItem $inbox -Filter *.md | Where-Object Name -ne 'README.md') {
+    $rows = foreach ($f in Get-ChildItem $inbox -Filter *.md |
+        Where-Object { $_.Name -ne 'README.md' -and $_.Name -notlike '*.sync.md' }) {
         $content = Get-Content $f.FullName -Raw
         $candidates = @([regex]::Matches($content, '(?m)^## ')).Count
         if ($candidates -eq 0) { continue }
@@ -163,17 +164,20 @@ function Invoke-GrimdexMechanicalChecks {
 
 function Sync-GrimdexRepo {
     # pull --rebase, then push (one rebase-and-retry on a push race). -SkipPush for
-    # read-only runs. Never forces; a rebase conflict surfaces as a throw.
+    # read-only runs. -Autostash stashes a dirty tree across the rebase. Never forces;
+    # a rebase conflict surfaces as a throw.
     param(
         [Parameter(Mandatory)][string]$GrimdexRoot,
-        [switch]$SkipPush
+        [switch]$SkipPush,
+        [switch]$Autostash
     )
-    git -C $GrimdexRoot pull --rebase --quiet 2>&1 | Out-Null
+    [string[]]$auto = if ($Autostash) { '--autostash' } else { }
+    git -C $GrimdexRoot pull --rebase --quiet @auto 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed in $GrimdexRoot" }
     if ($SkipPush) { return [pscustomobject]@{ pulled = $true; pushed = $false } }
     git -C $GrimdexRoot push --quiet 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        git -C $GrimdexRoot pull --rebase --quiet 2>&1 | Out-Null
+        git -C $GrimdexRoot pull --rebase --quiet @auto 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "git pull --rebase (retry) failed in $GrimdexRoot" }
         git -C $GrimdexRoot push --quiet 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "git push failed twice in $GrimdexRoot" }

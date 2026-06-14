@@ -29,5 +29,17 @@ Assert 'audit at 05:30' ($d.at -eq '05:30')
 Assert 'audit catch-up enabled' ($d.startWhenAvailable)
 Assert 'audit runs run-scheduled.ps1 -Kind audit' ($d.argument -like '*-Kind audit')
 
+# ---------- pull task definition ----------
+$pull = Get-GrimdexTaskDefinition -Kind pull -GrimdexRoot 'D:\Dev\Grimdex'
+Assert 'pull task name'      ($pull.taskName -eq 'Grimdex-Daily-Pull')
+Assert 'pull is daily'       ($pull.schedule -eq 'daily')
+Assert 'pull at 05:30'       ($pull.at -eq '05:30')
+Assert 'pull runs run-sync'  ($pull.argument -match 'run-sync\.ps1')
+Assert 'pull has no -Kind'   ($pull.argument -notmatch '-Kind')
+
+# ---------- role-driven install set ----------
+Assert 'hub installs sweep+audit' (((Get-GrimdexScheduleTaskNames -Role hub) -join ',') -eq 'Grimdex-Daily-Sweep,Grimdex-Weekly-Audit')
+Assert 'spoke installs pull only' (((Get-GrimdexScheduleTaskNames -Role spoke) -join ',') -eq 'Grimdex-Daily-Pull')
+
 if ($failures -gt 0) { Write-Host "`n$failures FAILURE(S)" -ForegroundColor Red; exit 1 }
 Write-Host "`nAll schedule-lib tests passed." -ForegroundColor Green

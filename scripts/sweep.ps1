@@ -11,7 +11,7 @@ param(
     [switch]$NoSync
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'sweep-lib.ps1')
+. (Join-Path $PSScriptRoot 'sync-lib.ps1')   # also dot-sources sweep-lib.ps1
 
 if (-not $NoSync) {
     $sync = Sync-GrimdexRepo -GrimdexRoot $GrimdexRoot -SkipPush
@@ -25,12 +25,14 @@ foreach ($row in $inbox) {
 }
 
 $findings = @(Invoke-GrimdexMechanicalChecks -GrimdexRoot $GrimdexRoot)
+$findings += @(Test-GrimdexRuleSyncProposals -GrimdexRoot $GrimdexRoot)
 $warns = @($findings | Where-Object severity -eq 'warn')
 $infos = @($findings | Where-Object severity -eq 'info')
+$pendingSync = @($findings | Where-Object check -eq 'rule-sync')
 Write-Host "  findings: $($warns.Count) warn, $($infos.Count) info"
 foreach ($f in $findings) {
     Write-Host ("    {0,-4} [{1}] {2} — {3}" -f $f.severity, $f.check, $f.path, $f.message)
 }
 
-if ($inbox.Count -eq 0 -and $warns.Count -eq 0) { Write-Host 'STATUS: heartbeat-ok' }
+if ($inbox.Count -eq 0 -and $warns.Count -eq 0 -and $pendingSync.Count -eq 0) { Write-Host 'STATUS: heartbeat-ok' }
 else { Write-Host 'STATUS: action-needed' }

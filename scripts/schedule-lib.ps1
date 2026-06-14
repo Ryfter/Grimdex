@@ -3,33 +3,50 @@
 Set-StrictMode -Version Latest
 
 function Get-GrimdexTaskDefinition {
-    # Pure: describes one of the two scheduled tasks. Registration consumes this.
     param(
-        [Parameter(Mandatory)][ValidateSet('sweep', 'audit')][string]$Kind,
+        [Parameter(Mandatory)][ValidateSet('sweep', 'audit', 'pull')][string]$Kind,
         [Parameter(Mandatory)][string]$GrimdexRoot
     )
-    $entry = Join-Path $GrimdexRoot 'scripts' 'run-scheduled.ps1'
-    # Task Scheduler does not resolve PATH like a shell — pin the full pwsh path.
     $pwshPath = (Get-Command pwsh.exe -ErrorAction SilentlyContinue)?.Source ?? 'pwsh.exe'
-    # Host via conhost: under Windows Terminal the console MoveWindow is a no-op, so
-    # the routine window can't be placed on the target display. Classic conhost moves.
     $conhost = Join-Path $env:SystemRoot 'System32' 'conhost.exe'
+    if ($Kind -eq 'pull') {
+        $entry = Join-Path $GrimdexRoot 'scripts' 'run-sync.ps1'
+        $argument = "`"$pwshPath`" -NoProfile -File `"$entry`""
+    } else {
+        $entry = Join-Path $GrimdexRoot 'scripts' 'run-scheduled.ps1'
+        $argument = "`"$pwshPath`" -NoProfile -File `"$entry`" -Kind $Kind"
+    }
+    $taskName = switch ($Kind) {
+        'sweep' { 'Grimdex-Daily-Sweep' }
+        'audit' { 'Grimdex-Weekly-Audit' }
+        'pull'  { 'Grimdex-Daily-Pull' }
+    }
     [pscustomobject]@{
         kind = $Kind
-        taskName = if ($Kind -eq 'sweep') { 'Grimdex-Daily-Sweep' } else { 'Grimdex-Weekly-Audit' }
+        taskName = $taskName
         execute = $conhost
-        argument = "`"$pwshPath`" -NoProfile -File `"$entry`" -Kind $Kind"
-        schedule = if ($Kind -eq 'sweep') { 'daily' } else { 'weekly' }
+        argument = $argument
+        schedule = if ($Kind -eq 'audit') { 'weekly' } else { 'daily' }
         at = '05:30'
         dayOfWeek = if ($Kind -eq 'audit') { 'Sunday' } else { $null }
-        startWhenAvailable = $true   # PC off at 5:30 -> run as soon as it is next able
+        startWhenAvailable = $true
     }
 }
 
+function Get-GrimdexScheduleTaskNames {
+    # Which scheduled tasks a machine of this role runs.
+    param([Parameter(Mandatory)][ValidateSet('hub', 'spoke')][string]$Role)
+    if ($Role -eq 'hub') { @('Grimdex-Daily-Sweep', 'Grimdex-Weekly-Audit') } else { @('Grimdex-Daily-Pull') }
+}
+
 function Install-GrimdexSchedule {
-    # Registers (or replaces) both tasks for the current user. Idempotent.
-    param([Parameter(Mandatory)][string]$GrimdexRoot)
-    $results = foreach ($kind in 'sweep', 'audit') {
+    # Registers the tasks for the given role. Idempotent.
+    param(
+        [Parameter(Mandatory)][string]$GrimdexRoot,
+        [Parameter(Mandatory)][ValidateSet('hub', 'spoke')][string]$Role
+    )
+    $kinds = if ($Role -eq 'hub') { 'sweep', 'audit' } else { @('pull') }
+    $results = foreach ($kind in $kinds) {
         $def = Get-GrimdexTaskDefinition -Kind $kind -GrimdexRoot $GrimdexRoot
         $action = New-ScheduledTaskAction -Execute $def.execute -Argument $def.argument
         $trigger = if ($def.schedule -eq 'daily') {
@@ -39,14 +56,14 @@ function Install-GrimdexSchedule {
         }
         $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
         Register-ScheduledTask -TaskName $def.taskName -Action $action -Trigger $trigger `
-            -Settings $settings -Description "Grimdex $kind routine (d002)" -Force | Out-Null
+            -Settings $settings -Description "Grimdex $kind routine (d002/d008)" -Force | Out-Null
         [pscustomobject]@{ task = $def.taskName; action = 'registered' }
     }
     return $results
 }
 
 function Uninstall-GrimdexSchedule {
-    $results = foreach ($name in 'Grimdex-Daily-Sweep', 'Grimdex-Weekly-Audit') {
+    $results = foreach ($name in 'Grimdex-Daily-Sweep', 'Grimdex-Weekly-Audit', 'Grimdex-Daily-Pull') {
         if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
             Unregister-ScheduledTask -TaskName $name -Confirm:$false
             [pscustomobject]@{ task = $name; action = 'removed' }

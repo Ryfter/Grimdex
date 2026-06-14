@@ -33,6 +33,12 @@ A scheduled "librarian" routine keeps it aggressively maintained.
   seven community-converged conventions (each independently advocated by 3+ prominent
   practitioners), the reasoning behind each, and a paste-into-your-agent prompt that
   files them through the normal promotions inbox.
+- **Multi-machine consistency.** Run one knowledge base across several machines via a
+  hub-and-spoke, single-writer model: a designated hub is the only writer of rules/law;
+  spokes pull read-only and propose edits with `scripts/propose-rule.ps1` (filed as a
+  `rule-sync` proposal in `universal/promotions/`), which the hub reviews and publishes
+  with `scripts/review-rule-proposals.ps1`. GitHub is the exchange — no merge conflicts
+  on shared rules by construction.
 
 ## Quick start
 
@@ -49,7 +55,7 @@ repo is the engine/template only.
 
 Requirements: PowerShell 7+, git. The scheduled routines additionally expect a
 headless-capable AI CLI (built against [Claude Code](https://claude.com/claude-code));
-everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (5 suites).
+everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (6 suites).
 
 ## Layout
 

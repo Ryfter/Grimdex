@@ -5,9 +5,9 @@
 Set-StrictMode -Version Latest
 
 function Get-GrimdexDisplayBounds {
-    # Working area of Windows display N (\\.\DISPLAYN). Fallback: first non-primary,
-    # then primary. $null when screens can't be enumerated. Default 1 typically maps
-    # to a secondary display — routine windows stay off the main working screen.
+    # Working area of Windows display N (\\.\DISPLAYN). Falls back to the first
+    # non-primary display, then the primary, so routine windows land on a secondary
+    # screen when one exists. $null when screens can't be enumerated.
     param([int]$Display = 1)
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop

@@ -9,8 +9,8 @@ param([Parameter(Mandatory)][ValidateSet('sweep', 'audit')][string]$Kind)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 
-# Label the console and put it on display 1 (typically the secondary monitor) so a
-# 5:30 am window is self-explaining and off the main screen.
+# Label the console and place it on a secondary display when one exists, so a
+# 5:30 am routine window is self-explaining and off the primary working screen.
 . (Join-Path $PSScriptRoot 'console-lib.ps1')
 Set-GrimdexConsoleWindow -Display 1 `
     -Title "Grimdex — scheduled $Kind routine (Claude, Task Scheduler) — $root" | Out-Null

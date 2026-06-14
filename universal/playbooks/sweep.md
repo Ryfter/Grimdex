@@ -1,6 +1,6 @@
 # Playbook: the daily consolidation sweep (5:30 am routine)
 
-You are running Grimdex's daily maintenance. Working directory: `D:\Dev\Grimdex`.
+You are running Grimdex's daily maintenance. Working directory: the Grimdex repository root (this repo).
 **Autonomy is graduated (d002):** you may inscribe clean *additions* into the law; you
 may never rewrite or remove existing law — those are deferred to the owner. Be terse.
 

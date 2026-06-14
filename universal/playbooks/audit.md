@@ -1,6 +1,6 @@
 # Playbook: the weekly KB audit (Sunday 5:30 am routine)
 
-You are running Grimdex's weekly health audit. Working directory: `D:\Dev\Grimdex`.
+You are running Grimdex's weekly health audit. Working directory: the Grimdex repository root (this repo).
 **You may auto-fix purely mechanical rot. You may never change knowledge content** —
 semantic concerns are flagged for the owner, and his ruling (either way) gets recorded. Be
 terse; the audit is incremental — focus on what changed since the last audit entry in

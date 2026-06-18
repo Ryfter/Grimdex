@@ -28,6 +28,14 @@ that are referenced elsewhere — flag those.
   sitting only on the local disk (check the known mirrors: `universal/claude-rules/`).
 - **Inbox staleness:** candidates older than 7 days (the sweep should have processed
   or deferred them — staleness means the loop is broken).
+- **Model provenance** (`universal/model-catalog.md` vs each `projects/*/model-usage.md`):
+  - *Catch misses (mechanical, auto):* any `runner/model` in a usage log but absent from
+    the catalog — e.g. a tool that didn't self-stamp at closeout — gets registered
+    (`current` for frontier; a bottom-up row for local). Update local `last-seen`.
+  - *Mark supersession + flag (semantic, flag-only):* where a newer version has landed,
+    mark the prior catalog entry `superseded → <successor>` and raise an OPEN CONCERN on
+    usage-log steps still on the old model ("review whether to revisit"). Never edit the
+    superseded work — flagging is the whole action; the human decides.
 - **Instruction-file health (the law + playbooks).** Adherence degrades with length —
   frontier models reliably follow ~150–200 instructions and the harness's own system
   prompt spends ~50 of those — so every line must earn its keep:

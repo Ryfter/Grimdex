@@ -54,6 +54,8 @@ the owner's instance grows its own rules here via the maintained loop.
   whatever reference docs the instance accumulates. **Promotion-gated:** a rule enters
   the law only with evidence from ≥2 projects, via the sweep — never directly.
 - `RIPPEDPAGES.md` / `KB-AUDIT-LOG.md` (root) — removals ledger and health log.
+- `universal/model-catalog.md` + `projects/<id>/model-usage.md` — model provenance: what
+  ran each step (stamped at closeout) so the audit can flag work a model change may affect.
 - `scripts/` + `setup.ps1` — setup, wiring, sweep, scheduling (PowerShell 7+). Wire a
   project with `pwsh scripts/wire-project.ps1 -ProjectDir <dir>` (idempotent marked
   block in CLAUDE.md / AGENTS.md / GEMINI.md / .cursorrules / copilot-instructions).

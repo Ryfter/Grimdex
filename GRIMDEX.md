@@ -35,6 +35,11 @@ the owner's instance grows its own rules here via the maintained loop.
    are noise that erodes adherence to the real ones). A rule still being violated
    despite emphasis gets converted into something deterministic — a script, hook,
    gate, or CI check — not more prose. Suggested starter rules: `SUGGESTED-RULES.md`.
+8. **Stamp model provenance at every closeout.** Run `pwsh scripts/stamp-model.ps1` at the
+   compact/sprint seam to record which `runner/model` did the step: it appends to
+   `projects/<id>/model-usage.md` and self-registers the model in
+   `universal/model-catalog.md`. Why: a model change can later invalidate work built with
+   it; the weekly audit flags the dependent steps — but only if provenance was recorded.
 
 ## Routing table — when to read what
 
@@ -56,7 +61,7 @@ the owner's instance grows its own rules here via the maintained loop.
 - `RIPPEDPAGES.md` / `KB-AUDIT-LOG.md` (root) — removals ledger and health log.
 - `universal/model-catalog.md` + `projects/<id>/model-usage.md` — model provenance: what
   ran each step (stamped at closeout) so the audit can flag work a model change may affect.
-- `scripts/` + `setup.ps1` — setup, wiring, sweep, scheduling (PowerShell 7+). Wire a
+- `scripts/` + `setup.ps1` — setup, wiring, sweep, scheduling, model-stamp (PowerShell 7+). Wire a
   project with `pwsh scripts/wire-project.ps1 -ProjectDir <dir>` (idempotent marked
   block in CLAUDE.md / AGENTS.md / GEMINI.md / .cursorrules / copilot-instructions).
 - `config/` — tool-specific configuration backups, isolated so the knowledge itself

@@ -122,10 +122,22 @@ with length.
 - **Edit:** `universal/playbooks/audit.md` (model-provenance housekeeping check)
 - **Edit:** `GRIMDEX.md` (one-line Layout pointer)
 
-## Why no script (yet)
+## Script + elevation to law (owner decision, 2026-06-18)
 
-This ships as convention + playbook wiring, file-first — no `scripts/` automation. Law #7
-converts a rule to deterministic enforcement only *after* evidence it is being violated.
-A brand-new convention has none yet; a script written from anticipation would be the
-exact unfollowed-rule noise the law warns against. If stamps start getting skipped, the
-audit's escalation path turns it into a hook/script then.
+The first cut shipped as convention + playbook wiring only, deferring a script per Law #7
+(automate after evidence of violation). The owner overrode that: make the stamp
+deterministic from day one and elevate it to a numbered law, because provenance is only
+useful if it is captured *consistently* — a skipped stamp is a silent hole the audit
+can't see. So this revision adds:
+
+- `scripts/model-lib.ps1` — pure helpers (`Test-/Split-GrimdexModelId`,
+  `Get-GrimdexModelTier`, `Format-GrimdexUsageLine`, `Add-GrimdexUsageLine`,
+  `Add-GrimdexCatalogModel`, `Test-GrimdexCatalogHasModel`) + the `Add-GrimdexModelStamp`
+  orchestrator and `Find-GrimdexStaleModelUsage` (the audit's deterministic flagger).
+- `scripts/stamp-model.ps1` — the closeout entry point.
+- `scripts/test-model-lib.ps1` — the 7th test suite.
+- **GRIMDEX.md law #8** — "stamp model provenance at every closeout," naming the script.
+- The compact playbook now invokes the script; the audit uses `Find-GrimdexStaleModelUsage`.
+
+Law #7 still governs *future* escalation (e.g. a pre-compact hook that refuses to compact
+unstamped) if the law alone proves insufficient.

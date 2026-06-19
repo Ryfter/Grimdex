@@ -55,7 +55,7 @@ repo is the engine/template only.
 
 Requirements: PowerShell 7+, git. The scheduled routines additionally expect a
 headless-capable AI CLI (built against [Claude Code](https://claude.com/claude-code));
-everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (6 suites).
+everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (7 suites).
 
 ## Layout
 

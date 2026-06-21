@@ -4,7 +4,7 @@
 pair programming. One markdown repo holds your programming decisions, rules, and
 lessons; every AI coding agent you use (Claude Code, Codex, Gemini, GitHub Copilot,
 Cursor, local models) reads it before working and records what it learns back into it.
-A scheduled "librarian" routine keeps it aggressively maintained.
+A scheduled "librarian" routine keeps it **"aggressively maintained"**.
 
 > **Expectation-setting:** this is an early, experimental personal project, published
 > because the pattern is useful — not a turnkey product. Windows + PowerShell 7 first;

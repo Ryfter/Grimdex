@@ -25,7 +25,7 @@ A scheduled "librarian" routine keeps it **"aggressively maintained"**.
   ever removed, with the why). Clean additions auto-inscribe with a full paper trail;
   conflicts and removals always wait for the human.
 - **Every tool is a contributor.** `wire-project.ps1` injects a marked pointer block
-  into a repo's `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, and
+  into a repo's `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `GROK.md`, `.cursorrules`, and
   `.github/copilot-instructions.md`, so whatever agent opens the project finds the
   knowledge base and the contribution rule.
 - **Cold-start seeding.** Rules normally earn their way in through observed failures —

@@ -45,9 +45,11 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 Set-Content -Path (Join-Path $tmp 'CLAUDE.md') -Value "# My project`n`nHouse rules.`n" -NoNewline
 
 $results = Install-GrimdexPointers -ProjectDir $tmp -GrimdexPath 'D:\Dev\Grimdex'
-Assert 'five target files reported' ($results.Count -eq 5)
+Assert 'six target files reported' ($results.Count -eq 6)
 Assert 'CLAUDE.md appended' (($results | Where-Object file -like '*CLAUDE.md').action -eq 'appended')
 Assert 'AGENTS.md created' (($results | Where-Object file -like '*AGENTS.md').action -eq 'created')
+Assert 'GROK.md created' (($results | Where-Object file -like '*GROK.md').action -eq 'created')
+Assert 'GROK.md on disk' (Test-Path (Join-Path $tmp 'GROK.md'))
 Assert '.cursorrules created' (Test-Path (Join-Path $tmp '.cursorrules'))
 Assert 'copilot-instructions created under .github' (Test-Path (Join-Path $tmp '.github' 'copilot-instructions.md'))
 $claude = Get-Content (Join-Path $tmp 'CLAUDE.md') -Raw

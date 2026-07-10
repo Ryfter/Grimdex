@@ -12,6 +12,7 @@ function Get-GrimdexTargetFiles {
         (Join-Path $ProjectDir 'CLAUDE.md'),
         (Join-Path $ProjectDir 'AGENTS.md'),
         (Join-Path $ProjectDir 'GEMINI.md'),
+        (Join-Path $ProjectDir 'GROK.md'),
         (Join-Path $ProjectDir '.cursorrules'),
         (Join-Path $ProjectDir '.github' 'copilot-instructions.md')
     )
@@ -63,17 +64,26 @@ function Install-GrimdexPointers {
     if (-not (Test-Path $ProjectDir -PathType Container)) { throw "Project dir not found: $ProjectDir" }
     if (-not $ProjectId) { $ProjectId = Split-Path (Resolve-Path $ProjectDir).Path -Leaf }
     $stanza = Get-GrimdexStanza -GrimdexPath $GrimdexPath -ProjectId $ProjectId
+    # UTF-8 without BOM for all read/write. Get-Content/Set-Content -Encoding utf8
+    # on Windows can mangle em dashes / arrows and rewrite the whole handoff file.
+    # Also match the host file's newline style so a CRLF handoff is not "updated"
+    # solely because the stanza was built with LF.
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
     $results = foreach ($file in Get-GrimdexTargetFiles -ProjectDir $ProjectDir) {
         $parent = Split-Path $file -Parent
         if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-        $existing = if (Test-Path $file) { Get-Content $file -Raw } else { $null }
-        $new = Set-GrimdexBlock -Content $existing -Stanza $stanza
+        $existing = if (Test-Path $file) { [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $file).Path, $utf8) } else { $null }
+        $nl = if ($existing -and $existing.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $stanzaForFile = ($stanza -replace "`r?`n", "`n") -replace "`n", $nl
+        $new = Set-GrimdexBlock -Content $existing -Stanza $stanzaForFile
         $action =
             if ($null -eq $existing) { 'created' }
             elseif ($new -eq $existing) { 'unchanged' }
             elseif ($existing.Contains($script:GrimdexStartMarker)) { 'updated' }
             else { 'appended' }
-        if ($action -ne 'unchanged') { Set-Content -Path $file -Value $new -NoNewline -Encoding utf8 }
+        if ($action -ne 'unchanged') {
+            [System.IO.File]::WriteAllText($file, $new, $utf8)
+        }
         [pscustomobject]@{ file = $file; action = $action }
     }
     return $results

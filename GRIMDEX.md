@@ -63,7 +63,7 @@ the owner's instance grows its own rules here via the maintained loop.
   ran each step (stamped at closeout) so the audit can flag work a model change may affect.
 - `scripts/` + `setup.ps1` — setup, wiring, sweep, scheduling, model-stamp (PowerShell 7+). Wire a
   project with `pwsh scripts/wire-project.ps1 -ProjectDir <dir>` (idempotent marked
-  block in CLAUDE.md / AGENTS.md / GEMINI.md / .cursorrules / copilot-instructions).
+  block in CLAUDE.md / AGENTS.md / GEMINI.md / GROK.md / .cursorrules / copilot-instructions).
 - `config/` — tool-specific configuration backups, isolated so the knowledge itself
   stays tool-neutral.
 

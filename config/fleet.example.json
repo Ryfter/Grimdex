@@ -1,0 +1,17 @@
+{
+  "_comment": "Grimdex labor-split policy. Copy to config/fleet.json and edit for your rig. See universal/playbooks/labor-split.md. availability: available|scarce|out|unknown (absent = available). invoke: claude-subagent:<model> | cli:<binary> | plugin:<name>.",
+  "workers": {
+    "builder":  { "invoke": "cli:your-bulk-coder", "roles": ["bulk-code"],          "tier": "build", "availability": "available" },
+    "coder":    { "invoke": "claude-subagent:sonnet","roles": ["small-code"],         "tier": "mid",   "availability": "available", "parallel_with": ["builder"] },
+    "planner":  { "invoke": "claude-subagent:opus", "roles": ["thinking","planning","review"], "tier": "high", "availability": "available" },
+    "scribe":   { "invoke": "claude-subagent:haiku","roles": ["docs","summary","language"], "tier": "cheap", "availability": "available" },
+    "oncall":   { "invoke": "plugin:your-oncall",   "roles": ["on-call"],            "gate": "explicit-call-only" },
+    "vcs":      { "invoke": "cli:gh",               "roles": ["repo-op"] }
+  },
+  "policy": {
+    "default_builder": "builder",
+    "small_code_may_use": "coder",
+    "late_window_burn_high_tiers": true,
+    "counsel": ["planner","builder","oncall"]
+  }
+}

@@ -48,6 +48,7 @@ the owner's instance grows its own rules here via the maintained loop.
 | Creating/starting a new project | `universal/playbooks/project-start.md` |
 | Compacting a conversation (closeout + state report) | `universal/playbooks/compact.md` |
 | Ending/finalizing a project | `universal/playbooks/project-end.md` |
+| Splitting work across models/tools (the labor-split) | `universal/playbooks/labor-split.md` |
 | Running the daily consolidation sweep | `universal/playbooks/sweep.md` |
 | Running the weekly KB audit | `universal/playbooks/audit.md` |
 

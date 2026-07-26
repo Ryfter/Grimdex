@@ -39,6 +39,11 @@ A scheduled "librarian" routine keeps it **"aggressively maintained"**.
   `rule-sync` proposal in `universal/promotions/`), which the hub reviews and publishes
   with `scripts/review-rule-proposals.ps1`. GitHub is the exchange — no merge conflicts
   on shared rules by construction.
+- **Model labor-split.** Route each task to the right worker for your rig — bulk builds
+  to your highest-capacity coder, reviews to your strongest model, docs to your cheapest —
+  via a `config/fleet.json` policy and a tested selector (`scripts/fleet-lib.ps1`). Includes
+  a user-invoked multi-model "full counsel" cross-review. See
+  [labor-split.md](universal/playbooks/labor-split.md).
 
 ## Quick start
 
@@ -55,7 +60,7 @@ repo is the engine/template only.
 
 Requirements: PowerShell 7+, git. The scheduled routines additionally expect a
 headless-capable AI CLI (built against [Claude Code](https://claude.com/claude-code));
-everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (7 suites).
+everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (8 suites).
 
 ## Layout
 

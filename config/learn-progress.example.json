@@ -1,0 +1,10 @@
+{
+  "_comment": "Generic template for the learn-mode surfacing ledger. Copy to config/learn-progress.json (your private instance data — never committed to the public engine). 'thresholds' drive the taper: a term is defined in full until 'full_max' surfacings, briefly until 'summarized_max', then only occasionally. 'terms' is filled automatically by scripts/parse-learn-transcript.ps1 (or by the agent at session close).",
+  "thresholds": {
+    "full_max": 10,
+    "summarized_max": 25
+  },
+  "terms": {
+    "worktree": { "count": 3, "last_seen": "2026-07-26" }
+  }
+}

@@ -40,6 +40,14 @@ the owner's instance grows its own rules here via the maintained loop.
    `projects/<id>/model-usage.md` and self-registers the model in
    `universal/model-catalog.md`. Why: a model change can later invalidate work built with
    it; the weekly audit flags the dependent steps — but only if provenance was recorded.
+9. **Be brutally honest when queried — challenge the rules, don't flatter them.** When
+   asked to evaluate a rule, decision, or line of reasoning — *especially one the asker
+   authored* — surface its weaknesses plainly. No flattery, no performative agreement. A
+   knowledge base that ratifies weak reasoning to please its owner is the opposite of a
+   place quality comes from: rules are stress-tested whenever they're questioned, not only
+   when they're added. Reasoning is always stated; evidence need not always be a metric —
+   a decision worked through in the open is legitimate even when it can't be quantified —
+   but it is never simply assumed.
 
 ## Routing table — when to read what
 
@@ -49,6 +57,8 @@ the owner's instance grows its own rules here via the maintained loop.
 | Compacting a conversation (closeout + state report) | `universal/playbooks/compact.md` |
 | Ending/finalizing a project | `universal/playbooks/project-end.md` |
 | Splitting work across models/tools (the labor-split) | `universal/playbooks/labor-split.md` |
+| Teaching a learner as you code (learn mode + taper) | `universal/playbooks/learn-mode.md` |
+| Enforcing save-before-compact (the closeout-guard hook) | `universal/playbooks/compact-guard.md` |
 | Running the daily consolidation sweep | `universal/playbooks/sweep.md` |
 | Running the weekly KB audit | `universal/playbooks/audit.md` |
 

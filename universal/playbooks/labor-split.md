@@ -96,3 +96,31 @@ Because full counsel is an explicit user call, gated workers in the counsel rost
 The selector (`Select-FleetWorker`) is pure and advisory — it selects only; it does not dispatch, spend budget, or produce side effects. Deciding to act on its choice, and actually running the work, is the host agent's job and is implementation-specific (Agent tool, Bash, plugin, etc.).
 
 Use this playbook and these three functions (`Get-GrimdexFleet`, `Test-FleetWorkerAvailable`, `Select-FleetWorker`) together to build a routing layer for your labor-split strategy.
+
+## 9. Default seating (example)
+
+The policy above encodes *your* lineup; this is the reasoning behind a good default seating,
+stated in vendor-neutral terms so you can map it onto whatever models/tools you run. **The
+guiding principle: put intelligence where it has the most impact.**
+
+| Seat | Tier | Does |
+|---|---|---|
+| Plan / orchestrate | `high` | Decide *what* needs doing, decompose, write the brief, dispatch, adjudicate reviews. Highest leverage — planning errors cascade downstream. |
+| Complex coding + final review | `high`/`build` | The hard, deeper-thinking implementation and the final whole-branch review. |
+| Regular coding + integration | `mid` | Prose-/spec-described implementation and multi-file integration — anything needing interpretation. |
+| Technical writing + plan-transcription coding | `cheap` | Docs/summaries about existing code, **and implementing a plan that already contains the complete code with tests specified**. |
+
+**The key seam is plan completeness, not task size.** When the plan writes out the *complete
+code* (with tests specified), a cheap-tier worker can safely transcribe it — the scaffolding
+(complete code + specified tests + a senior review seat) catches any deviation. When the task
+is *prose-described* or spans *multiple files needing integration*, it needs interpretation and
+belongs a tier up. The failure mode to watch is a task *mislabeled* as transcription-grade that
+actually needed interpretation — so classifying the task honestly is the planner's job, not the
+implementer's.
+
+**Compact at the plan→dispatch seam.** When planning is done, save off and compact *before*
+handing to an implementation seat — switching workers means the next one starts cold, so give
+it the compacted plan as its starting point, not the whole planning context. (See
+`playbooks/compact.md` and the closeout discipline.)
+
+An explicit orchestrator, if you run one, overrides all of this — its dispatch decisions win.

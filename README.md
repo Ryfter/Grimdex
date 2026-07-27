@@ -44,6 +44,15 @@ A scheduled "librarian" routine keeps it **"aggressively maintained"**.
   via a `config/fleet.json` policy and a tested selector (`scripts/fleet-lib.ps1`). Includes
   a user-invoked multi-model "full counsel" cross-review. See
   [labor-split.md](universal/playbooks/labor-split.md).
+- **Learn mode.** An optional teaching layer: the agent narrates the *why* and defines the
+  jargon as it works, so a learner builds real vocabulary. A surfacing ledger
+  (`scripts/learn-lib.ps1` + a transcript parser) tapers each term deterministically — full
+  definition, then a reminder, then only occasionally — so it fades instead of nagging. See
+  [learn-mode.md](universal/playbooks/learn-mode.md).
+- **Compaction safety.** A `PreCompact` hook (`scripts/precompact-guard.ps1`) blocks a
+  conversation compaction while work is uncommitted or unpushed, so context is never
+  compressed before the closeout runs. Fail-safe: it only ever blocks on a confirmed
+  unsaved-work signal. See [compact-guard.md](universal/playbooks/compact-guard.md).
 
 ## Quick start
 
@@ -60,7 +69,7 @@ repo is the engine/template only.
 
 Requirements: PowerShell 7+, git. The scheduled routines additionally expect a
 headless-capable AI CLI (built against [Claude Code](https://claude.com/claude-code));
-everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (8 suites).
+everything else is plain files. Tests: `pwsh scripts/test-<area>.ps1` (10 suites).
 
 ## Layout
 

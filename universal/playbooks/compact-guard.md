@@ -24,7 +24,11 @@ pre-empt it.
 - Clean → **exit 0** (allow, silent).
 - **Fail-safe:** missing git, a non-repo path, or garbled stdin → **exit 0**. The guard only
   ever blocks on a *confirmed* unsaved-work signal, so it can never wedge a session.
-- Fires on **both** manual `/compact` and auto-compaction (PreCompact fires for both triggers).
+- **Wire it to `manual` only.** PreCompact fires for both triggers, but the guard should be
+  scoped to `matcher: "manual"` (the deliberate `/compact`). Blocking an **auto**-compaction —
+  the host's own emergency response to a full context window — refuses the session's escape
+  hatch at exactly the moment it needs it, and the host's behavior on a refused auto-compact is
+  undefined. Guard the deliberate seam; never interfere with the ceiling.
 
 ## Wiring (settings.json)
 
@@ -36,11 +40,12 @@ PowerShell 7:
   "hooks": {
     "PreCompact": [
       {
-        "matcher": "",
+        "matcher": "manual",
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"<grimdex-root>/scripts/precompact-guard.ps1\""
+            "command": "pwsh -NoProfile -File \"<grimdex-root>/scripts/precompact-guard.ps1\"",
+            "timeout": 30
           }
         ]
       }
@@ -49,9 +54,10 @@ PowerShell 7:
 }
 ```
 
-`matcher: ""` fires for both `manual` and `auto`. Replace `<grimdex-root>` with the absolute
-path to your Grimdex instance. On other platforms swap `pwsh` invocation as needed; the script
-itself is cross-platform PowerShell 7.
+`matcher: "manual"` scopes the guard to the deliberate `/compact` and leaves auto-compaction
+alone (see Behavior — do **not** use `""`, which would also gate the host's emergency
+compaction). Replace `<grimdex-root>` with the absolute path to your Grimdex instance. On other
+platforms swap the `pwsh` invocation as needed; the script itself is cross-platform PowerShell 7.
 
 ## Notes
 

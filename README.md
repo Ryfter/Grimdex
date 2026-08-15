@@ -54,6 +54,23 @@ A scheduled "librarian" routine keeps it **"aggressively maintained"**.
   compressed before the closeout runs. Fail-safe: it only ever blocks on a confirmed
   unsaved-work signal. See [compact-guard.md](universal/playbooks/compact-guard.md).
 
+## Where Grimdex sits — the three-layer ecosystem
+
+Grimdex governs **how** coding work is done. Two sibling layers cover the rest:
+**Grimlore** (optional) remembers **why/who/context**, and **Grimdex Baton** decides
+**what happens next** and executes it. Grimdex resists bloat precisely *because* those
+layers exist to take what doesn't belong here.
+
+The authoritative brief — the Law, definitions, boundary tests, promotion policy, and the
+list of assumptions to discard — is
+[`docs/2026-08-14-grimdex-ecosystem-architecture.md`](docs/2026-08-14-grimdex-ecosystem-architecture.md).
+Grimlore's opening design draft is
+[`docs/2026-08-14-grimlore-spec.md`](docs/2026-08-14-grimlore-spec.md) (spec only —
+nothing built yet).
+
+**Boundary test, in one line:** changes *how* work is done → Grimdex. Explains *why/who* →
+Grimlore. Makes something *happen* → Baton.
+
 ## Quick start
 
 ```powershell

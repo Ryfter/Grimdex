@@ -342,8 +342,8 @@ A representative concept file:
 ```markdown
 ---
 type: Environment
-title: Primary workstation — D:\Dev rig
-description: Windows 11 + PowerShell 7 development box; where every D:\Dev project is built.
+title: Primary workstation — ~/dev rig
+description: Windows 11 + PowerShell 7 development box; where every ~/dev project is built.
 tags: [hardware, windows, local]
 generated: { by: "claude/opus-5", at: "2026-08-14T19:00:00-06:00" }
 verified: [{ by: "human:kevin", at: "2026-08-14T19:30:00-06:00" }]

@@ -3,7 +3,7 @@
   Wire a project into Grimdex: inject/update the marked pointer stanza in the project's
   CLAUDE.md, AGENTS.md, GEMINI.md, GROK.md, .cursorrules, and .github/copilot-instructions.md
   (creating any that are missing). Idempotent — re-runs update the block in place.
-    pwsh scripts/wire-project.ps1 -ProjectDir D:\Dev\my-project
+    pwsh scripts/wire-project.ps1 -ProjectDir ~/dev/my-project
 #>
 param(
     [Parameter(Mandatory)][string]$ProjectDir,

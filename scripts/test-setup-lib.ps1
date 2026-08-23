@@ -197,6 +197,30 @@ $threw = $false
 try { Install-GrimdexJunction -KnowledgePath (Join-Path $sandbox 'x') -Target $sandbox | Out-Null } catch { $threw = $true }
 Assert 'invalid target -> throws' $threw
 
+# --- Operator network profile ---
+$onRoot = Join-Path $sandbox 'operator-network-root'
+New-FakeGrimdexRepo $onRoot
+$onPath = Get-OperatorNetworkConfigPath -GrimdexRoot $onRoot
+Assert 'operator-network: missing path' (-not (Test-Path $onPath))
+
+$cfg = New-OperatorNetworkConfig -OperatorBrowserOnServer $false -LanHostname 'dev-box' `
+    -TailnetEnabled $true -TailnetHostname 'dev-box' -MagicDnsSuffix 'example.ts.net'
+Save-OperatorNetworkConfig -GrimdexRoot $onRoot -Config $cfg | Out-Null
+$loaded = Get-OperatorNetworkConfig -GrimdexRoot $onRoot
+Assert 'operator-network: roundtrip mode' ($loaded.mode -eq 'lan+tailnet')
+Assert 'operator-network: roundtrip lan hostname' ($loaded.announce.home_lan.hostname -eq 'dev-box')
+Assert 'operator-network: localhost-only mode' (
+    (New-OperatorNetworkConfig -OperatorBrowserOnServer $true).mode -eq 'localhost-only'
+)
+
+$skip = Initialize-OperatorNetworkConfig -GrimdexRoot $onRoot -NonInteractive
+Assert 'operator-network: existing -> exists' ($skip.action -eq 'exists')
+
+$fresh = Join-Path $sandbox 'operator-network-fresh'
+New-FakeGrimdexRepo $fresh
+$skip2 = Initialize-OperatorNetworkConfig -GrimdexRoot $fresh -NonInteractive
+Assert 'operator-network: missing + non-interactive -> skipped' ($skip2.action -eq 'skipped')
+
 # cleanup (delete junctions as links, then the sandbox)
 foreach ($p in $kp, $kp2, $kp3, $kp4) {
     if ((Test-Path $p) -and (Get-Item $p -Force).LinkType -eq 'Junction') { (Get-Item $p -Force).Delete() }

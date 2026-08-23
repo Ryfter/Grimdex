@@ -151,11 +151,13 @@ work without Grimlore. Full brief:
 - `RIPPEDPAGES.md` / `KB-AUDIT-LOG.md` (root) — removals ledger and health log.
 - `universal/model-catalog.md` + `projects/<id>/model-usage.md` — model provenance: what
   ran each step (stamped at closeout) so the audit can flag work a model change may affect.
-- `scripts/` + `setup.ps1` — setup, wiring, sweep, scheduling, model-stamp (PowerShell 7+). Wire a
-  project with `pwsh scripts/wire-project.ps1 -ProjectDir <dir>` (idempotent marked
-  block in CLAUDE.md / AGENTS.md / GEMINI.md / GROK.md / .cursorrules / copilot-instructions).
+- `scripts/` + `setup.ps1` — setup, wiring, sweep, scheduling, model-stamp (PowerShell 7+).
+  First-run `setup.ps1` prompts for `config/operator-network.json` (dev-server bind/announce:
+  localhost vs home LAN vs tailnet). Wire a project with
+  `pwsh scripts/wire-project.ps1 -ProjectDir <dir>` (idempotent marked block in
+  CLAUDE.md / AGENTS.md / GEMINI.md / GROK.md / .cursorrules / copilot-instructions).
 - `config/` — tool-specific configuration backups, isolated so the knowledge itself
-  stays tool-neutral.
+  stays tool-neutral. See `config/README.md` (`operator-network.example.json`, etc.).
 
 ## Maintenance
 

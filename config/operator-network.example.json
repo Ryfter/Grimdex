@@ -1,0 +1,18 @@
+{
+  "_comment": "Private instance profile: how agents bind and announce HTTP dev servers. Copy to config/operator-network.json and edit, or run pwsh setup.ps1 (first-run prompt). Never ship real hostnames to the public engine — example values only.",
+  "mode": "lan+tailnet",
+  "operator_browser_on_server": false,
+  "bind": "all-interfaces",
+  "announce": {
+    "localhost_ok": false,
+    "home_lan": {
+      "hostname": "dev-box"
+    },
+    "tailnet": {
+      "enabled": true,
+      "hostname": "dev-box",
+      "magic_dns_suffix": "example.ts.net"
+    }
+  },
+  "notes": "Home LAN: http://dev-box:<port>/ — Office (tailnet): http://dev-box.example.ts.net:<port>/"
+}

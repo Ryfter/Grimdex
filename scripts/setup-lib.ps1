@@ -188,3 +188,134 @@ function Install-GrimdexJunction {
     }
     return [pscustomobject]@{ state = 'linked'; action = 'swapped'; backup = $backup }
 }
+
+# --- Operator network profile (dev-server bind/announce) ---
+
+function Get-OperatorNetworkConfigPath {
+    param([Parameter(Mandatory)][string]$GrimdexRoot)
+    Join-Path $GrimdexRoot 'config' 'operator-network.json'
+}
+
+function Get-OperatorNetworkConfig {
+    param([Parameter(Mandatory)][string]$GrimdexRoot)
+    $path = Get-OperatorNetworkConfigPath -GrimdexRoot $GrimdexRoot
+    if (-not (Test-Path $path)) { return $null }
+    try {
+        return (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json)
+    } catch {
+        throw "config/operator-network.json is malformed JSON: $($_.Exception.Message)"
+    }
+}
+
+function Save-OperatorNetworkConfig {
+    param(
+        [Parameter(Mandatory)][string]$GrimdexRoot,
+        [Parameter(Mandatory)][object]$Config
+    )
+    $path = Get-OperatorNetworkConfigPath -GrimdexRoot $GrimdexRoot
+    $dir = Split-Path $path -Parent
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    ($Config | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+    return $path
+}
+
+function New-OperatorNetworkConfig {
+    param(
+        [Parameter(Mandatory)][bool]$OperatorBrowserOnServer,
+        [string]$LanHostname = '',
+        [bool]$TailnetEnabled = $false,
+        [string]$TailnetHostname = '',
+        [string]$MagicDnsSuffix = ''
+    )
+    if ($OperatorBrowserOnServer) {
+        return [ordered]@{
+            mode                         = 'localhost-only'
+            operator_browser_on_server   = $true
+            bind                         = 'loopback'
+            announce                     = [ordered]@{
+                localhost_ok = $true
+                home_lan     = $null
+                tailnet      = [ordered]@{ enabled = $false }
+            }
+            notes = 'Browser on the server — localhost URLs are fine.'
+        }
+    }
+    $mode = if ($TailnetEnabled) { 'lan+tailnet' } else { 'lan' }
+    $tailHost = if ($TailnetHostname) { $TailnetHostname } else { $LanHostname }
+    $notes = "Home LAN: http://${LanHostname}:<port>/"
+    if ($TailnetEnabled -and $MagicDnsSuffix) {
+        $notes += " — Office (tailnet): http://${tailHost}.${MagicDnsSuffix}:<port>/"
+    }
+    return [ordered]@{
+        mode                         = $mode
+        operator_browser_on_server   = $false
+        bind                         = 'all-interfaces'
+        announce                     = [ordered]@{
+            localhost_ok = $false
+            home_lan     = [ordered]@{ hostname = $LanHostname }
+            tailnet      = [ordered]@{
+                enabled            = [bool]$TailnetEnabled
+                hostname           = $tailHost
+                magic_dns_suffix   = $(if ($TailnetEnabled) { $MagicDnsSuffix } else { $null })
+            }
+        }
+        notes = $notes
+    }
+}
+
+function Initialize-OperatorNetworkConfig {
+    param(
+        [Parameter(Mandatory)][string]$GrimdexRoot,
+        [switch]$Reconfigure,
+        [switch]$NonInteractive
+    )
+    $path = Get-OperatorNetworkConfigPath -GrimdexRoot $GrimdexRoot
+    if ((Test-Path $path) -and -not $Reconfigure) {
+        return [pscustomobject]@{ action = 'exists'; path = $path }
+    }
+    if ($NonInteractive -and -not $Reconfigure) {
+        return [pscustomobject]@{
+            action = 'skipped'
+            path   = $path
+            reason = 'non-interactive and no profile yet — copy config/operator-network.example.json'
+        }
+    }
+
+    Write-Host ''
+    Write-Host '  Operator network profile (dev-server URLs)' -ForegroundColor Cyan
+    Write-Host '  Browsers on another machine cannot open http://127.0.0.1 — bind 0.0.0.0 and'
+    Write-Host '  announce a hostname instead. LAN bind is usually one extra flag (--host 0.0.0.0).'
+    Write-Host ''
+
+    $sameMachine = (Read-Host '  Is your browser usually on THIS machine? [y/N]') -match '^[Yy]'
+    if ($sameMachine) {
+        $cfg = New-OperatorNetworkConfig -OperatorBrowserOnServer $true
+        Save-OperatorNetworkConfig -GrimdexRoot $GrimdexRoot -Config $cfg | Out-Null
+        return [pscustomobject]@{ action = 'created'; path = $path; mode = 'localhost-only' }
+    }
+
+    Write-Host '  Remote browser → bind all interfaces (0.0.0.0), not loopback only.'
+    $defaultHost = try { [System.Net.Dns]::GetHostName() } catch { 'dev-box' }
+    $lanHost = Read-Host "  LAN hostname for this server [$defaultHost]"
+    if ([string]::IsNullOrWhiteSpace($lanHost)) { $lanHost = $defaultHost }
+
+    $useTailnet = (Read-Host '  Use Tailscale (or another tailnet VPN) for off-LAN access? [y/N]') -match '^[Yy]'
+    $tailHost = $lanHost
+    $suffix = ''
+    if ($useTailnet) {
+        $tailHost = Read-Host "  Tailnet MagicDNS hostname [$lanHost]"
+        if ([string]::IsNullOrWhiteSpace($tailHost)) { $tailHost = $lanHost }
+        $suffix = Read-Host '  Tailnet DNS suffix (e.g. example.ts.net)'
+        while ([string]::IsNullOrWhiteSpace($suffix)) {
+            Write-Host '  Suffix required when tailnet is enabled (find it in the Tailscale admin DNS page).'
+            $suffix = Read-Host '  Tailnet DNS suffix'
+        }
+    }
+
+    $cfg = New-OperatorNetworkConfig -OperatorBrowserOnServer $false `
+        -LanHostname $lanHost -TailnetEnabled:$useTailnet `
+        -TailnetHostname $tailHost -MagicDnsSuffix $suffix
+    Save-OperatorNetworkConfig -GrimdexRoot $GrimdexRoot -Config $cfg | Out-Null
+    $mode = if ($useTailnet) { 'lan+tailnet' } else { 'lan' }
+    return [pscustomobject]@{ action = 'created'; path = $path; mode = $mode }
+}

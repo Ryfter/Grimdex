@@ -4,6 +4,7 @@
     pwsh setup.ps1                          # verify structure + report junction states
     pwsh setup.ps1 -CreateJunction          # also swap ~/.claude/knowledge -> junction (asks first)
     pwsh setup.ps1 -LinkRules               # also swap ~/.claude/rules -> universal/claude-rules (asks first)
+    pwsh setup.ps1 -ConfigureNetwork          # re-prompt for config/operator-network.json
     pwsh setup.ps1 -CreateJunction -Force   # non-interactive (still refuses dirty trees / diverged rules)
 #>
 param(
@@ -11,6 +12,7 @@ param(
     [string]$RulesPath = (Join-Path $HOME '.claude' 'rules'),
     [switch]$CreateJunction,
     [switch]$LinkRules,
+    [switch]$ConfigureNetwork,
     [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
@@ -73,4 +75,12 @@ if ($LinkRules -and $rstate -notin 'linked', 'no-mirror') {
     } else { Write-Host '  Skipped.' }
 } elseif ($rstate -in 'real-dir', 'missing') {
     Write-Host '  (run again with -LinkRules to serve rules directly from Grimdex)'
+}
+
+# 6. Operator network profile (dev-server bind/announce URLs)
+$nonInteractive = [bool]$Force -or -not [Environment]::UserInteractive
+$net = Initialize-OperatorNetworkConfig -GrimdexRoot $root -Reconfigure:$ConfigureNetwork -NonInteractive:$nonInteractive
+Write-Host ("  Operator network: {0}{1}" -f $net.action, $(if ($net.mode) { " ($($net.mode))" } elseif ($net.reason) { " — $($net.reason)" } else { '' }))
+if ($net.action -eq 'skipped') {
+    Write-Host '  (copy config/operator-network.example.json → config/operator-network.json, or re-run without -Force)'
 }

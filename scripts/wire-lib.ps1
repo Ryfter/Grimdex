@@ -21,22 +21,43 @@ function Get-GrimdexTargetFiles {
 function Get-GrimdexStanza {
     param(
         [Parameter(Mandatory)][string]$GrimdexPath,
-        [Parameter(Mandatory)][string]$ProjectId
+        [Parameter(Mandatory)][string]$ProjectId,
+        [switch]$Portable
     )
-    $rootFile = Join-Path $GrimdexPath 'GRIMDEX.md'
-    @(
-        $script:GrimdexStartMarker,
-        '# Grimdex — coding knowledge base (read first)',
-        '',
-        'PROGRAMMING DECISIONS, rules, and lessons → record them in **Grimdex** at',
-        "``$GrimdexPath`` (this project's tier: ``projects/$ProjectId/``).",
-        '',
-        "- Read ``$rootFile`` FIRST — layout and contribution rules.",
-        '- When you make or revise a coding rule, decision, or lesson, write it there.',
-        '- Reference decision records by id (e.g. `d012`); do not duplicate them in app repos.',
-        '- Grimdex engine is open source: <https://github.com/Ryfter/Grimdex>.',
-        $script:GrimdexEndMarker
-    ) -join "`n"
+    if ($Portable) {
+        @(
+            $script:GrimdexStartMarker,
+            '# Grimdex — coding knowledge base (read first)',
+            '',
+            'PROGRAMMING DECISIONS, rules, and lessons → record them in **Grimdex**',
+            "(this project's tier: ``projects/$ProjectId/``).",
+            '',
+            '**Locate Grimdex:** resolve `$GRIMDEX_HOME` environment variable. Fallback',
+            'discovery (first match wins): `~/dev/grimdex`, `~/Development/grimdex`,',
+            '`C:\Development\grimdex`, `D:\Dev\Grimdex`.',
+            '',
+            '- Read `GRIMDEX.md` at the resolved root FIRST — layout and contribution rules.',
+            '- When you make or revise a coding rule, decision, or lesson, write it there.',
+            '- Reference decision records by id (e.g. `d012`); do not duplicate them in app repos.',
+            '- Grimdex engine is open source: <https://github.com/Ryfter/Grimdex>.',
+            $script:GrimdexEndMarker
+        ) -join "`n"
+    } else {
+        $rootFile = "$GrimdexPath\GRIMDEX.md"
+        @(
+            $script:GrimdexStartMarker,
+            '# Grimdex — coding knowledge base (read first)',
+            '',
+            'PROGRAMMING DECISIONS, rules, and lessons → record them in **Grimdex** at',
+            "``$GrimdexPath`` (this project's tier: ``projects/$ProjectId/``).",
+            '',
+            "- Read ``$rootFile`` FIRST — layout and contribution rules.",
+            '- When you make or revise a coding rule, decision, or lesson, write it there.',
+            '- Reference decision records by id (e.g. `d012`); do not duplicate them in app repos.',
+            '- Grimdex engine is open source: <https://github.com/Ryfter/Grimdex>.',
+            $script:GrimdexEndMarker
+        ) -join "`n"
+    }
 }
 
 function Set-GrimdexBlock {
@@ -59,11 +80,12 @@ function Install-GrimdexPointers {
     param(
         [Parameter(Mandatory)][string]$ProjectDir,
         [Parameter(Mandatory)][string]$GrimdexPath,
-        [string]$ProjectId
+        [string]$ProjectId,
+        [switch]$Portable = $true
     )
     if (-not (Test-Path $ProjectDir -PathType Container)) { throw "Project dir not found: $ProjectDir" }
     if (-not $ProjectId) { $ProjectId = Split-Path (Resolve-Path $ProjectDir).Path -Leaf }
-    $stanza = Get-GrimdexStanza -GrimdexPath $GrimdexPath -ProjectId $ProjectId
+    $stanza = Get-GrimdexStanza -GrimdexPath $GrimdexPath -ProjectId $ProjectId -Portable:$Portable
     # UTF-8 without BOM for all read/write. Get-Content/Set-Content -Encoding utf8
     # on Windows can mangle em dashes / arrows and rewrite the whole handoff file.
     # Also match the host file's newline style so a CRLF handoff is not "updated"

@@ -8,10 +8,11 @@
 param(
     [Parameter(Mandatory)][string]$ProjectDir,
     [string]$ProjectId,
-    [string]$GrimdexPath = (Split-Path $PSScriptRoot -Parent)
+    [string]$GrimdexPath = (Split-Path $PSScriptRoot -Parent),
+    [switch]$NoPortable
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'wire-lib.ps1')
 
-$results = Install-GrimdexPointers -ProjectDir $ProjectDir -GrimdexPath $GrimdexPath -ProjectId $ProjectId
+$results = Install-GrimdexPointers -ProjectDir $ProjectDir -GrimdexPath $GrimdexPath -ProjectId $ProjectId -Portable:(-not $NoPortable)
 $results | ForEach-Object { Write-Host ("  {0,-9} {1}" -f $_.action, $_.file) }

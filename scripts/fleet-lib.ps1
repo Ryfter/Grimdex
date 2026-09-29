@@ -14,7 +14,7 @@ function Test-FleetWorkerAvailable {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Worker)
     $avail = 'available'
-    if ($Worker.PSObject.Properties.Name -contains 'availability' -and $Worker.availability) {
+    if ($Worker.PSObject.Properties['availability'] -and $Worker.availability) {
         $avail = [string]$Worker.availability
     }
     switch ($avail) {
@@ -31,29 +31,46 @@ function Select-FleetWorker {
         [Parameter(Mandatory)]$Fleet,
         [Parameter(Mandatory)][string]$TaskType,
         [switch]$Explicit,
-        [switch]$LateWindow
+        [switch]$LateWindow,
+        [hashtable]$QuotaState
     )
     $order = 0
     $cands = @()
-    foreach ($name in $Fleet.workers.PSObject.Properties.Name) {
+    foreach ($p in $Fleet.workers.PSObject.Properties) {
+        $name = $p.Name
         $w = $Fleet.workers.$name
-        $roles = @($w.roles)
+        # Not every worker declares roles (d037 added alias rows); strict mode throws on a raw read.
+        $roles = if ($w.PSObject.Properties['roles']) { @($w.roles) } else { @() }
         if ($roles -contains $TaskType) {
             $cands += [pscustomobject]@{ Name = $name; Worker = $w; Order = $order }
         }
         $order++
     }
     if (-not $Explicit) {
-        $cands = @($cands | Where-Object { -not ($_.Worker.PSObject.Properties.Name -contains 'gate') })
+        $cands = @($cands | Where-Object { -not $_.Worker.PSObject.Properties['gate'] })
     }
     $cands = @($cands | Where-Object { (Test-FleetWorkerAvailable $_.Worker) -ne 'unavailable' })
+
+    $quotaNotes    = @()
+    $quotaEmptied  = $false
+    if ($QuotaState -and $QuotaState.Count -and -not $Explicit -and $cands.Count) {
+        $kept = @()
+        foreach ($c in $cands) {
+            $q = $QuotaState[$c.Name]
+            if ($q -and $q.PSObject.Properties['OverCeiling'] -and $q.OverCeiling) { $quotaNotes += "$($c.Name) excluded: $($q.Note)" }
+            else { $kept += $c }
+        }
+        if ($kept.Count) { $cands = @($kept) }
+        elseif ($quotaNotes.Count) { $quotaEmptied = $true }   # keep $cands; ask instead of blocking
+    }
+
     if (-not $cands.Count) { return $null }
 
-    $policy = if ($Fleet.PSObject.Properties.Name -contains 'policy') { $Fleet.policy } else { $null }
+    $policy = if ($Fleet.PSObject.Properties['policy']) { $Fleet.policy } else { $null }
     $hintName = $null
     if ($policy) {
-        if ($TaskType -eq 'bulk-code'  -and $policy.PSObject.Properties.Name -contains 'default_builder')   { $hintName = $policy.default_builder }
-        if ($TaskType -eq 'small-code' -and $policy.PSObject.Properties.Name -contains 'small_code_may_use') { $hintName = $policy.small_code_may_use }
+        if ($TaskType -eq 'bulk-code'  -and $policy.PSObject.Properties['default_builder'])   { $hintName = $policy.default_builder }
+        if ($TaskType -eq 'small-code' -and $policy.PSObject.Properties['small_code_may_use']) { $hintName = $policy.small_code_may_use }
     }
     $chosen = $null
     if ($hintName) { $chosen = $cands | Where-Object { $_.Name -eq $hintName } | Select-Object -First 1 }
@@ -64,7 +81,7 @@ function Select-FleetWorker {
         $chosen = $cands | Sort-Object `
             @{ Expression = { & $availRank (Test-FleetWorkerAvailable $_.Worker) } }, `
             @{ Expression = {
-                    $t = if ($_.Worker.PSObject.Properties.Name -contains 'tier') { [string]$_.Worker.tier } else { 'mid' }
+                    $t = if ($_.Worker.PSObject.Properties['tier']) { [string]$_.Worker.tier } else { 'mid' }
                     $rank = if ($tierBase.ContainsKey($t)) { $tierBase[$t] } else { 1 }
                     if ($LateWindow) { 3 - $rank } else { $rank }
               } }, `
@@ -79,8 +96,19 @@ function Select-FleetWorker {
     elseif ($LateWindow) { $reason += " (late-window: high tier)" }
     else { $reason += " ($status)" }
 
+    $needsAsk = ($status -eq 'ask')
+    if ($quotaEmptied) {
+        $q = $QuotaState[$chosen.Name]
+        $note = if ($q -and $q.PSObject.Properties['Note']) { $q.Note } else { 'over ceiling' }
+        $reason += " (quota: $note; every worker for this role is over its ceiling — ask before spending the reserve)"
+        $needsAsk = $true
+    }
+    elseif ($quotaNotes.Count) {
+        $reason += " ($($quotaNotes -join '; '))"
+    }
+
     return [pscustomobject]@{
         Name = $chosen.Name; Worker = $chosen.Worker; Reason = $reason
-        NeedsAsk = ($status -eq 'ask')
+        NeedsAsk = $needsAsk
     }
 }

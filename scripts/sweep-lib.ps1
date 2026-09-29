@@ -6,9 +6,11 @@ Set-StrictMode -Version Latest
 $script:GrimdexLogTopMarker = '<!-- grimdex:log-top -->'
 
 function Get-GrimdexMarkdownFiles {
+    # Skips machine dirs (.git/.claude/.index/logs) and any `archive/` subtree —
+    # archived snapshots are intentionally frozen and must not raise link/id findings.
     param([Parameter(Mandatory)][string]$GrimdexRoot)
     Get-ChildItem -Path $GrimdexRoot -Recurse -File -Filter *.md |
-        Where-Object { $_.FullName -notmatch '[\\/](\.git|\.claude|\.index|logs)[\\/]' }
+        Where-Object { $_.FullName -notmatch '[\\/](\.git|\.claude|\.index|logs|archive)[\\/]' }
 }
 
 function New-GrimdexFinding {
@@ -79,8 +81,10 @@ function Test-GrimdexWikilinks {
                 $slug = $m.Groups[1].Value.Trim()
                 $hit = $basenames | Where-Object { $_ -eq $slug -or $_ -like "*$slug*" } | Select-Object -First 1
                 if (-not $hit) {
+                    # Report the slug WITHOUT [[ ]] so this finding text doesn't itself
+                    # get re-flagged when it lands in KB-AUDIT-LOG.md next run.
                     New-GrimdexFinding -Check 'wikilinks' -Severity info -Path $f.FullName `
-                        -Message "dangling wikilink: [[$slug]] (add <!-- forward-ref --> if intentional)"
+                        -Message "dangling wikilink: '$slug' — use a backticked name for auto-memory / out-of-repo refs, or <!-- forward-ref --> if intentional"
                 }
             }
         }
@@ -137,28 +141,123 @@ function Test-GrimdexRepoState {
 }
 
 function Test-GrimdexInboxStaleness {
-    # A candidate older than $MaxDays means the loop is broken (warn).
+    # A stale candidate (>$MaxDays) with NO disposition in PROMOTIONS-LOG.md means the
+    # loop is broken (warn) -- one that already has a logged DEFERRED/ACCEPTED/REJECTED
+    # entry there is consciously tracked, awaiting the >=2-project clock, not backlog
+    # (info). Without this split every deliberately-retained candidate re-warns forever,
+    # which trains you to stop reading the sweep (2026-09-10).
     param(
         [Parameter(Mandatory)][string]$GrimdexRoot,
         [int]$MaxDays = 7
     )
+    $logPath = Join-Path $GrimdexRoot 'universal' 'PROMOTIONS-LOG.md'
+    $log = if (Test-Path $logPath) { Get-Content $logPath -Raw } else { '' }
     $findings = foreach ($row in Get-GrimdexInboxStatus -GrimdexRoot $GrimdexRoot) {
-        if ($row.oldestDays -gt $MaxDays) {
+        if ($row.oldestDays -le $MaxDays) { continue }
+        $dispositioned = $log -and [regex]::IsMatch($log,
+            "(?ms)^##[^\n]*—\s*(DEFERRED|ACCEPTED|REJECTED)[^\n]*\n(?:(?!^## ).)*?\*\*From:\*\*\s*projects/$([regex]::Escape($row.project))\b")
+        if ($dispositioned) {
+            New-GrimdexFinding -Check 'inbox-stale' -Severity info -Path $row.file `
+                -Message "candidate(s) from $($row.project) pending $($row.oldestDays) days (max $MaxDays) -- already logged in PROMOTIONS-LOG.md, retained for the 2nd-project clock"
+        } else {
             New-GrimdexFinding -Check 'inbox-stale' -Severity warn -Path $row.file `
-                -Message "candidate(s) from $($row.project) pending $($row.oldestDays) days (max $MaxDays)"
+                -Message "candidate(s) from $($row.project) pending $($row.oldestDays) days (max $MaxDays) -- no disposition found in PROMOTIONS-LOG.md, loop may be broken"
         }
     }
     return @($findings)
 }
 
-function Invoke-GrimdexMechanicalChecks {
+function Test-GrimdexStaleLeases {
+    # Reaps expired decision-number leases (grimdex-d042) across every project tier
+    # and surfaces what it found. Deliberately shells out to the POSIX sh script
+    # rather than reimplementing the O_EXCL claim/reap logic in pwsh (grimdex-d043:
+    # pwsh is not the language of choice for the fragile mechanical layer).
     param([Parameter(Mandatory)][string]$GrimdexRoot)
+    $script = Join-Path $GrimdexRoot 'scripts' 'decision-lease.sh'
+    if (-not (Test-Path $script)) { return @() }
+    $out = & sh $script reap-all 2>$null
+    $findings = foreach ($line in $out) {
+        if ($line -match '^reaped: (\S+) \(age ([^,]+), project (\S+)\)') {
+            New-GrimdexFinding -Check 'stale-lease' -Severity info `
+                -Path "projects/$($Matches[3])/decisions/.leases" `
+                -Message "reaped expired decision-number lease $($Matches[1]) (age $($Matches[2]))"
+        } elseif ($line -match '^stale-warning: (\S+) \(age ([^,]+), project (\S+)\)') {
+            New-GrimdexFinding -Check 'stale-lease' -Severity info `
+                -Path "projects/$($Matches[3])/decisions/.leases" `
+                -Message "live decision-number lease $($Matches[1]) is $($Matches[2]) old -- may indicate a dead session"
+        }
+    }
+    return @($findings)
+}
+
+function Get-GrimdexCompiledCheckBinary {
+    # Builds (or reuses a cached build of) scripts/grimdex-check -- the Go port
+    # of the five checks below (grimdex-d044). Cache lives in a git-ignored
+    # .bin/ dir, keyed by source mtime so an edit to any .go file triggers a
+    # rebuild. Returns $null (never throws) if `go` isn't on PATH and no cached
+    # binary exists -- callers must treat that as "fall back to pwsh", not an
+    # error: a missing Go toolchain on some host must never be a hard sweep
+    # failure (that would trade one single point of failure for another).
+    param([Parameter(Mandatory)][string]$GrimdexRoot)
+    $srcDir = Join-Path $GrimdexRoot 'scripts' 'grimdex-check'
+    if (-not (Test-Path (Join-Path $srcDir 'go.mod'))) { return $null }
+    $binDir = Join-Path $srcDir '.bin'
+    $bin = Join-Path $binDir 'grimdex-check'
+    $goFiles = Get-ChildItem $srcDir -Filter '*.go' -ErrorAction SilentlyContinue
+    $newestSrc = ($goFiles | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
+    $stale = -not (Test-Path $bin) -or ((Get-Item $bin).LastWriteTimeUtc -lt $newestSrc)
+    if ($stale) {
+        if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+            return $(if (Test-Path $bin) { $bin } else { $null })  # use a stale-but-present binary over none
+        }
+        New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+        # `-C $srcDir` (Go 1.20+): go's module resolution is based on the
+        # process's cwd, NOT the package path argument -- without -C this
+        # fails with "cannot find main module" whenever pwsh's cwd is outside
+        # scripts/grimdex-check (i.e. always, when called from the repo root).
+        & go build '-C' $srcDir -o $bin . 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $bin)) {
+            return $(if (Test-Path $bin) { $bin } else { $null })
+        }
+    }
+    return $bin
+}
+
+function Invoke-GrimdexCompiledChecks {
+    # Runs the Go binary's `checks` subcommand and parses its JSONL into the
+    # same Finding shape New-GrimdexFinding produces. Returns $null (not an
+    # empty array) on any failure so the caller can tell "ran, found nothing"
+    # apart from "couldn't run" -- collapsing those would silently hide a
+    # broken toolchain as a clean sweep.
+    param([Parameter(Mandatory)][string]$GrimdexRoot, [Parameter(Mandatory)][string]$Binary)
+    $out = & $Binary checks $GrimdexRoot 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $findings = foreach ($line in $out) {
+        if (-not $line.Trim()) { continue }
+        $obj = $line | ConvertFrom-Json -ErrorAction SilentlyContinue
+        if ($obj) { [pscustomobject]@{ check = $obj.check; severity = $obj.severity; path = $obj.path; message = $obj.message } }
+    }
+    return @($findings)
+}
+
+function Invoke-GrimdexMechanicalChecks {
+    # Prefers the compiled Go port (grimdex-d044) of the five checks below --
+    # falls back to the original pwsh implementations if `go` isn't available
+    # and no cached binary exists, or if the binary errors. The pwsh functions
+    # are kept, not deleted: they are the fallback, not dead code.
+    param([Parameter(Mandatory)][string]$GrimdexRoot)
+    $bin = Get-GrimdexCompiledCheckBinary -GrimdexRoot $GrimdexRoot
+    $compiled = if ($bin) { Invoke-GrimdexCompiledChecks -GrimdexRoot $GrimdexRoot -Binary $bin } else { $null }
+    if ($null -ne $compiled) {
+        return @($compiled) + @(Test-GrimdexStaleLeases -GrimdexRoot $GrimdexRoot)
+    }
     @(
         Test-GrimdexLinks -GrimdexRoot $GrimdexRoot
         Test-GrimdexWikilinks -GrimdexRoot $GrimdexRoot
         Test-GrimdexDecisionIds -GrimdexRoot $GrimdexRoot
         Test-GrimdexRepoState -GrimdexRoot $GrimdexRoot
         Test-GrimdexInboxStaleness -GrimdexRoot $GrimdexRoot
+        Test-GrimdexStaleLeases -GrimdexRoot $GrimdexRoot
     )
 }
 

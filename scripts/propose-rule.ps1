@@ -16,11 +16,13 @@ $ErrorActionPreference = 'Stop'
 if ((Get-GrimdexRole -GrimdexRoot $GrimdexRoot) -eq 'hub') {
     throw "This is the hub — edit the rule directly; proposals are for spokes."
 }
-$abs = Join-Path $GrimdexRoot ($Target -replace '/', '\')
+$abs = Join-Path $GrimdexRoot ($Target -replace '/', [IO.Path]::DirectorySeparatorChar)
 if (-not (Test-Path $abs)) { throw "Target does not exist: $Target" }
 
+$thisMachine = Get-GrimdexHostName
+
 # Scratch copy — the live file is never touched.
-$scratch = Join-Path $env:TEMP ("grimdex-propose-{0}.md" -f ([IO.Path]::GetFileNameWithoutExtension($Target)))
+$scratch = Join-Path ([IO.Path]::GetTempPath()) ("grimdex-propose-{0}.md" -f ([IO.Path]::GetFileNameWithoutExtension($Target)))
 Copy-Item $abs $scratch -Force
 try {
     $editor = $env:EDITOR
@@ -30,9 +32,9 @@ try {
     if ($content -eq (Get-Content $abs -Raw)) { Write-Host 'No change — nothing to propose.'; return }
 
     $path = New-RuleSyncProposal -GrimdexRoot $GrimdexRoot -Target $Target -Content $content `
-        -Machine $env:COMPUTERNAME -Timestamp (Get-Date -Format o) -Note $Note
+        -Machine $thisMachine -Timestamp (Get-Date -Format o) -Note $Note
     git -C $GrimdexRoot add -- $path     # absolute path inside the repo; git resolves it
-    git -C $GrimdexRoot commit -q -m "propose(rule-sync): $Target from $env:COMPUTERNAME"
+    git -C $GrimdexRoot commit -q -m "propose(rule-sync): $Target from $thisMachine"
     Sync-GrimdexRepo -GrimdexRoot $GrimdexRoot -Autostash | Out-Null
     Write-Host "Proposal filed and pushed: $(Split-Path $path -Leaf)" -ForegroundColor Green
 } finally {

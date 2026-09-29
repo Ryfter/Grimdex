@@ -1,0 +1,16 @@
+{
+  "_comment": "Copy to config/publish-scrub.json (private, never published) and list YOUR identifiers. scripts/publish-engine.ps1 refuses to run without it. Replacements are applied to engine-bound files; deny patterns (case-insensitive regex) block a publish; a line matching an allow regex is never flagged. Built-in checks also catch emails, home-folder paths, Tailscale IPs/*.ts.net names and private LAN IPs.",
+  "replacements": [
+    { "find": "my-hub-hostname", "replace": "<hub-host>" },
+    { "find": "your-tailnet.ts.net", "replace": "<tailnet>.ts.net" },
+    { "find": "/Users/yourname", "replace": "~" },
+    { "find": "\\bmy-laptop\\b", "replace": "<laptop-host>", "regex": true }
+  ],
+  "deny": [
+    "\\bMyFirstName\\b",
+    "my-private-data-repo"
+  ],
+  "allow": [
+    "Copyright \\(c\\) \\d{4} My Full Name"
+  ]
+}

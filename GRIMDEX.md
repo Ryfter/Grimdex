@@ -60,6 +60,7 @@ Grimdex and Baton are mutually independent: each works fully without the other, 
 work without Grimlore. Full brief:
 [`docs/2026-08-14-grimdex-ecosystem-architecture.md`](docs/2026-08-14-grimdex-ecosystem-architecture.md).
 
+<!-- grimdex:laws:start -->
 ## The law
 
 1. **Programming decisions, rules, and lessons are recorded HERE — not in app repos.**
@@ -140,6 +141,31 @@ work without Grimlore. Full brief:
 | Enforcing save-before-compact (the closeout-guard hook) | `universal/playbooks/compact-guard.md` |
 | Running the daily consolidation sweep | `universal/playbooks/sweep.md` |
 | Running the weekly KB audit | `universal/playbooks/audit.md` |
+<!-- grimdex:laws:end -->
+
+## Setup & updates — this file's two jobs
+
+Besides holding the law, this file is where **installing and updating** Grimdex is
+described. New install steps land here first.
+
+**Two modes** — chosen once at first run (`pwsh setup.ps1`), switchable any time
+(`pwsh setup.ps1 -Mode classic|agents`); stored in `config/grimdex-mode.json`:
+
+- **classic** — this file is the rules file. Every wired project's `CLAUDE.md`,
+  `AGENTS.md`, `GEMINI.md`, `GROK.md`, `.cursorrules` and Copilot instructions carry a
+  short pointer: "read `~/.claude/knowledge/GRIMDEX.md` first".
+- **agents** — `AGENTS.md` is the rules file. The law section above (between the
+  `grimdex:laws` markers) is stamped, with a version, into `<dev-root>/AGENTS.md` (the
+  main level every project reports to) and into each wired project's `AGENTS.md`.
+  `CLAUDE.md` imports it (`@AGENTS.md`); the other four files redirect to it. The
+  stamped copy is generated — edit the law here, never in a stamp.
+
+**Update:** `pwsh setup.ps1 -Update` pulls Grimdex, then re-stamps the main level and
+every wired project in the current mode, and reports what changed. `pwsh setup.ps1`
+alone reports the mode and how many project stamps are stale.
+
+**Wire a new project:** `pwsh scripts/wire-project.ps1 -ProjectDir <dir>` (uses the
+current mode).
 
 ## Layout
 

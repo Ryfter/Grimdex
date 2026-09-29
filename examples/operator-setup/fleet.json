@@ -1,0 +1,145 @@
+{
+  "workers": {
+    "grok":   { "invoke": "cli:grok",              "roles": ["review"],              "tier": "build", "availability": "available", "note": "Re-seated 2026-09-02 (grimdex-d037): was default bulk builder, now the code-review seat + a voice in the BIG-planning consensus panel. Its strength is catching problems, not grinding volume. Coding Agent Index v1.4: Grok 4.5 high = 64 (4 below Opus 5). Headless: `grok -p`; mind the inline-quoting footgun (routing.md)." },
+    "sonnet": { "invoke": "claude-subagent:sonnet","roles": ["small-code"],           "tier": "mid",   "availability": "available", "parallel_with": ["grok"] },
+    "fable":  { "invoke": "claude-subagent:fable", "roles": ["thinking","planning"],  "tier": "high", "availability": "out" },
+    "opus":   { "invoke": "claude-subagent:opus",  "roles": ["thinking","planning","review"], "tier": "high", "availability": "scarce" },
+    "haiku":  { "invoke": "claude-subagent:haiku", "roles": ["docs","summary","language"], "tier": "cheap", "availability": "available" },
+    "codex": {
+      "invoke": "cli:codex",
+      "invoke_alt": "plugin:codex-rescue",
+      "roles": ["on-call"],
+      "tier": "high",
+      "availability": "available",
+      "gate": "explicit-call-only; skip-if-weekly>50% — both invoke paths land on the same ChatGPT/Codex quota pool (d016)",
+      "note": "Standalone CLI, not just a Claude Code plugin: codex-cli 0.149.0 at /opt/homebrew/bin/codex, ChatGPT login (verified 2026-08-21). plugin:codex-rescue remains the in-Claude reach path. Headless: codex exec; -m/--model, -c model_reasoning_effort=<e>.",
+      "model_pin": {
+        "default": "gpt-5.6-sol",
+        "current_local_pin": "~/.codex/config.toml pins gpt-5.6-sol + reasoning_effort=high (verified 2026-08-21) — high is a deliberate spend-up; OpenAI's default effort is medium",
+        "effort_ladder": "none|low|medium(default)|high|xhigh|max — drop sol to medium on routine calls to save tokens; reserve high+ for deep/rescue work",
+        "tiers_5_6": "sol $5/$30 (flagship) | terra $2/$12 (mid — OpenAI: competitive with GPT-5.5 at 2x cheaper) | luna $0.20/$1.20 (cheap/fast — the Haiku analog by price). Per-1M in/out, post 2026-07-30 cuts (luna -80%, terra -20%); Terra/Luna also consume fewer Codex sub credits since the cut",
+        "seating": "sol@high = deep/rescue only; sol@medium = routine on-call; terra = mid-seat candidate (Sonnet-like); luna = docs/summary/bulk (Haiku-like). Operator hearsay 2026-08-21: 'luna@high is pretty good, a bit cheaper than sol' — by price that description fits terra, not luna; NEITHER is benchmarked (no routing-ratings.jsonl rows). Bench before seating either as a finisher.",
+        "zdr": "UNVERIFIED for the ChatGPT-login path — confirm retention posture before routing private-repo contents here."
+      }
+    },
+    "agy": {
+      "invoke": "cli:agy",
+      "roles": ["bulk-code","small-code","thinking","planning","design-2nd-opinion"],
+      "tier": "mid",
+      "availability": "available",
+      "gate": "separate quota pool (Antigravity / Google) — consumes no Anthropic/xAI/Cursor/Kiro/OpenRouter limits",
+      "note": "Antigravity CLI (agy 1.1.23, ~/.local/bin/agy). Promoted 2026-09-02 (grimdex-d037) from design-2nd-opinion/on-call to a routine workhorse — the operator: 'the new flash model is looking REALLY good.' Headless: `agy -p --model <id> [--mode plan] [--output-format json] [--json-schema <f>]`. Tool auto-approval is `--dangerously-skip-permissions`, BUT Claude Code's auto-mode classifier blocks any command containing that flag — dispatch agy from a context where Bash isn't classifier-gated, or add a Bash allow-rule for `agy`, or use `--mode plan` (read-only, no approval needed) for planning calls.",
+      "model_pin": {
+        "default": "gemini-3.8-flash-medium",
+        "planning_review": "gemini-3.8-flash-high — use for review work and when agy sits on the BIG-planning consensus panel",
+        "available": "gemini-3.8-flash-{low,medium,high}, gemini-3.7/3.6-flash-*, gemini-3.1-pro-{low,high}, claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium (agy models)",
+        "effort": "the -low/-medium/-high suffix IS the effort tier; `--effort` flag is redundant when the suffix is set",
+        "zdr": "Google/Antigravity path. the operator approved private Grimdex + Grimlore contents on the OpenRouter open-model paths 2026-09-02; treat agy the same (Google enterprise retention) unless he says otherwise."
+      },
+      "bench": "Artificial Analysis Coding Agent Index v1.4: Gemini 3.8 Flash (high) = 61 — just above GPT-5.6 Terra (60), ~3 below Grok 4.5 high (64), 7 below Opus 5 (68). Operator: at max effort reportedly ~Claude-5-ish; treat 61 as a floor for -high use. Full table in grimdex-d037.",
+      "caveat": "New seat, no routing-ratings.jsonl rows yet — rate early runs. Fast + cheap-pool but still a review gate before it finishes judgment work (grimdex-d030)."
+    },
+    "gemini-flash": { "alias_of": "agy", "model": "gemini-3.8-flash-high", "note": "Name used in policy.planning_consensus + policy.counsel — same worker as `agy`, pinned high for the panel." },
+    "gh":     { "invoke": "cli:gh",                "roles": ["pr","issues","releases","repo-op"] },
+
+    "cursor": {
+      "invoke": "cli:cursor-agent",
+      "roles": ["review","on-call"],
+      "tier": "high",
+      "availability": "available",
+      "gate": "explicit-call-only; separate quota pool (Cursor sub) — does not consume Anthropic/xAI limits",
+      "note": "Binary self-names 'agent', which collides with Grok's 'agent.exe' (Grok wins on PATH). Always cli:cursor-agent, never bare 'agent'. Headless: -p --output-format json.",
+      "fable_effort": {
+        "default":          "claude-fable-5-high",
+        "default_thinking": "claude-fable-5-thinking-high",
+        "escalate_only_if_needed": ["claude-fable-5-xhigh", "claude-fable-5-thinking-xhigh"],
+        "rule": "high is the seat for both ladders; xhigh is an exception that needs a reason, not a default",
+        "scope": "Cursor-reached Fable only; says nothing about the claude-subagent:fable seat",
+        "zdr": "NONE — all ten claude-fable-5-* are flagged (NO ZDR); prompts may be retained. Keep private-repo contents off this path unless explicitly approved."
+      }
+    },
+
+    "kiro": {
+      "invoke": "cli:kiro-cli",
+      "roles": ["bulk-code","docs","summary"],
+      "tier": "build",
+      "availability": "available",
+      "gate": "separate quota pool (Kiro credits) \u2014 does not consume Anthropic/xAI/Cursor limits",
+      "note": "BINARY COLLISION: /usr/local/bin/kiro is a DIFFERENT product (the Kiro IDE's 'code' launcher \u2014 opens the GUI editor). The agent CLI is ~/.local/bin/kiro-cli (v2.17.0). Always cli:kiro-cli, never bare 'kiro'. Headless: chat --no-interactive; reads stdin (quote-safe).",
+      "model_pin": {
+        "default": "claude-haiku-4.5",
+        "rule": "d043 \u2014 never 'auto'. Kiro's own default IS auto at 1.00x credits, which makes spend unattributable.",
+        "credit_multipliers": "qwen3-coder-next 0.05x | minimax-m2.1 0.15x | deepseek-3.2 0.25x | minimax-m2.5 0.25x | claude-haiku-4.5 0.40x | glm-5 0.50x | auto 1.00x | claude-sonnet-4(.5) 1.30x",
+        "effort_ladder": "--effort low|medium|high|xhigh|max available; unset by default. Credit cost scales with it.",
+        "zdr": "Non-Anthropic models on this pool (deepseek-3.2, minimax-m2.x, glm-5, qwen3-coder-next) are third-party. Keep private-repo contents off this path unless explicitly approved."
+      },
+      "caveat": "stdout carries ANSI escapes even under NO_COLOR=1/TERM=dumb, plus a 'Credits: N / Time: Ns' footer. Strict-JSON roles (review, judge, triage) withheld until a stripping shim exists."
+    },
+
+    "opencode": {
+      "invoke": "cli:opencode",
+      "roles": ["bulk-code","draft"],
+      "tier": "build",
+      "availability": "available",
+      "gate": "FREE promo \u2014 $0, near-unlimited tokens; consumes no metered pool at all",
+      "note": "npm ships the binary as 'opencode.exe' inside opencode-ai/bin, symlinked to 'opencode' on PATH \u2014 the .exe is a packaging artifact, not a Windows build. Headless: 'opencode run'; reads stdin (quote-safe). NOT 'opencode -p' \u2014 no top-level -p exists, and inside run -p means --password.",
+      "model_pin": {
+        "default": "opencode/big-pickle",
+        "identity": "self-reports as 'ox-alpha (powered by big-pickle)' \u2014 a stealth codename; the only model in `opencode models` not suffixed -free",
+        "expires": "~2026-08-27 (promo is ~1 week from 2026-08-20). On expiry this row starts failing or billing \u2014 swap to opencode/nemotron-3.5-lightning-free or wire a paid provider.",
+        "credentials": "ZERO configured on this box (`opencode providers list` -> 0 credentials, no provider env vars). Only hosted opencode/* models resolve.",
+        "zdr": "NONE. Free hosted inference on an unidentified preview model \u2014 assume prompts are retained and may train the vendor's model. Keep private-repo contents (Grimdex's KB included) off this path unless explicitly approved."
+      },
+      "caveat": "FIRST EVIDENCE IS A FAILURE \u2014 routing-ratings.jsonl 2026-08-20: capability=reasoning rating=bad failure_category=no-change (run go-2026-08-20T22-55-11 t1). 'No-change' = dispatched and produced nothing, the silent no-op the codex row warns about. Seat on bulk/draft labor behind a review gate, never as a finisher, per grimdex-d030. stdout carries ANSI plus a '> build / <model>' header, so strict-JSON roles are withheld; use --format json + a stripping shim to unlock them."
+    },
+
+    "openrouter-glm": {
+      "invoke": "cli:bash",
+      "invoke_args": "~/.baton/overnight/bin/or-free.sh --default [--code] z-ai/glm-5.3-flash \"<prompt>\"   (prompt also on stdin)",
+      "roles": ["bulk-code","docs","summary","draft"],
+      "tier": "cheap",
+      "availability": "available",
+      "gate": "separate quota pool (the operator's OpenRouter credit balance) \u2014 consumes no Anthropic/xAI/Cursor/Kiro limits",
+      "note": "Transport is a RAW CURL via `or-free.sh --default` \u2014 NOT opencode. Investigated 2026-09-03: GLM 5.3 Flash itself is clean (raw API: correct code, `<`/`&&` literal, 3/3, ~$8e-5, <2s round-trip), but `opencode run` is slow (~2 min startup) and INTERMITTENTLY HTML-escapes code output (`&lt;` `&gt;` `&amp;` \u2014 forkdeck 2026-09-02, 2 of 3 runs). Use `--code` for code-gen (html.unescape guard). GLM 5.3 Flash (z-ai/Zhipu) is the only model the `default`-workspace guardrail permits (allowlist of one, across Z.AI / Novita / DeepInfra); `openrouter/free` also passes. Every other pinned slug -> `Filter by Guardrails`. Widen at https://openrouter.ai/workspaces/default/guardrails.",
+      "model_pin": {
+        "default": "z-ai/glm-5.3-flash",
+        "rule": "the guardrail permits only this + openrouter/free; do not pin another slug without confirming the allowlist changed",
+        "zdr": "z-ai is third-party; prompts may be retained. the operator approved private-repo contents (Grimdex + Grimlore) on THIS path 2026-09-02 \u2014 a deliberate exception to the standing 'keep private KB off third-party' rule."
+      },
+      "caveat": "Fast reasoner, shallow on deep architecture / adversarial review / nuanced prose \u2014 seat on bulk-code/draft/docs/summary behind a review gate, never a finisher on judgment work (grimdex-d030). GLM 5.3 Flash is a REASONING model: it spends completion tokens on hidden reasoning first, so `max_tokens` must be generous (or-free.sh sets 8000) or `content` comes back empty. No routing-ratings.jsonl rows yet \u2014 rate early runs."
+    },
+
+    "openrouter-free": {
+      "invoke": "cli:bash",
+      "invoke_args": "~/.baton/overnight/bin/or-free.sh --default [--code] openrouter/free \"<prompt>\"   (prompt also on stdin)",
+      "roles": ["bulk-code","docs","summary","draft","language","design-2nd-opinion"],
+      "tier": "cheap",
+      "availability": "available",
+      "gate": "OpenRouter 'Free Models Router' (`openrouter/free`) \u2014 $0, genuinely free. Consumes no Anthropic/xAI/Cursor/Kiro limits and no OpenRouter credit. the operator added `openrouter/free` to the `default` workspace allowlist alongside GLM 5.3 Flash.",
+      "note": "Transport is `or-free.sh --default openrouter/free` (raw curl, ~1s) \u2014 switched off `opencode` 2026-09-03 (slow + intermittent HTML-escaping, same as openrouter-glm). `openrouter/free` is a ROUTER \u2014 it picks among genuinely-free models per request (seen: nvidia/nemotron-3.5-lightning:free), so which model answers and the quality vary run to run. Free endpoints are often rate-limited; on 429 or empty content, fall back to `openrouter-glm` (paid GLM 5.3 Flash) or `haiku`. For a SPECIFIC open model rather than the router's pick, drop `--default` to hit the `free-models` workspace ($1/wk cap): deepseek-v3.2-exp / deepseek-chat-v3.1 / deepseek-r1 / glm-4.6 / qwen3-coder / llama-3.3-70b / mistral-small-3.2.",
+      "model_pin": {
+        "default": "openrouter/free",
+        "rule": "the Free Models Router only \u2014 never pin a premium slug on this row (the operator: Claude/Grok/Gemini come from their own harness paths; OpenRouter here is the free open set)",
+        "zdr": "Free endpoints are training-permitted third-party. the operator approved private Grimdex + Grimlore contents on the OpenRouter path 2026-09-02 \u2014 but prefer `openrouter-glm` for anything sensitive; use this row for generic / scaffolding / high-volume-low-stakes work."
+      },
+      "caveat": "Router output varies model to model \u2014 never a finisher on judgment work (grimdex-d030); seat on bulk/draft/docs/summary behind a review gate. Expect intermittent 429s from free-tier capacity. No routing-ratings.jsonl rows yet \u2014 rate early runs."
+    }
+  },
+  "policy": {
+    "default_builder": "openrouter-glm",
+    "build_quality_escalation": "agy",
+    "small_code_may_use": "sonnet",
+    "cheap_offload_may_use": "openrouter-glm",
+    "cheap_oneshot_may_use": "openrouter-free",
+    "review_seat": "grok",
+    "high_level_review_and_planning": "opus",
+    "planning_consensus": {
+      "big_things": ["gemini-flash", "grok", "opus"],
+      "minor_things": ["opus"],
+      "note": "BIG planning (new subsystem, cross-cutting change, irreversible call) → run the 3-way panel and synthesize. Minor planning → opus alone, no panel."
+    },
+    "late_window_burn_high_tiers": true,
+    "late_window_note": "On the LAST day of a paid pool's weekly window, spend its high tiers aggressively — unused weekly quota is wasted. Priority order for the burn: code review and planning first (that is where the strong models pay off most), then bulk. Applies to Claude (opus/sonnet subagents) and any other pool with a weekly reset. Pass -LateWindow to Select-FleetWorker; check windows with the quota probe.",
+    "counsel": ["gemini-flash", "grok", "opus"]
+  }
+}

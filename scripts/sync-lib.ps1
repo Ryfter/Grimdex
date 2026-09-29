@@ -4,19 +4,29 @@
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'sweep-lib.ps1')
 
+function Get-GrimdexHostName {
+    # This machine's short hostname, cross-platform. $env:COMPUTERNAME is Windows-only —
+    # empty under pwsh on macOS/Linux — so fall back to .NET, then the `hostname` binary.
+    if ($env:COMPUTERNAME) { return $env:COMPUTERNAME }
+    try { $n = [System.Net.Dns]::GetHostName(); if ($n) { return $n } } catch { }
+    try { $n = (& hostname 2>$null); if ($n) { return "$n".Trim() } } catch { }
+    return ''
+}
+
 function Get-GrimdexRole {
     # 'hub' only when config/sync.json's hub matches this machine; 'spoke' otherwise
     # (missing/malformed config, or an absent/blank hub key, defaults to the safe, read-only spoke role).
     param(
         [Parameter(Mandatory)][string]$GrimdexRoot,
-        [string]$ComputerName = $env:COMPUTERNAME
+        [string]$ComputerName = (Get-GrimdexHostName)
     )
     $cfg = Join-Path $GrimdexRoot 'config' 'sync.json'
     if (-not (Test-Path $cfg)) { return 'spoke' }
     try { $hub = (Get-Content $cfg -Raw | ConvertFrom-Json).hub } catch { return 'spoke' }
-    if ($hub -and $hub.Trim().ToLowerInvariant() -eq $ComputerName.Trim().ToLowerInvariant()) {
-        return 'hub'
-    }
+    if (-not $hub) { return 'spoke' }
+    # Compare on the short name (strip any .local / DNS suffix on either side), case-insensitively.
+    $short = { param($s) (("$s" -split '\.')[0]).Trim().ToLowerInvariant() }
+    if ((& $short $hub) -and ((& $short $hub) -eq (& $short $ComputerName))) { return 'hub' }
     return 'spoke'
 }
 

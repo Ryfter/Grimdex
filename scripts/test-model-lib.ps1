@@ -94,7 +94,7 @@ Assert 're-stamp does not duplicate the row' ($devstralRows -eq 1)
 Assert 're-stamp advances last-seen' ($c4 -match '\|\s*ollama\s*\|\s*devstral\s*\|[^|]*\|[^|]*\|\s*2026-06-20\s*\|')
 
 # --- integration: Add-GrimdexModelStamp against a temp root ---
-$tmp = Join-Path $env:TEMP "grimdex-model-$(Get-Random)"
+$tmp = Join-Path ([IO.Path]::GetTempPath()) "grimdex-model-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'universal') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'projects') | Out-Null
 Set-Content -Path (Join-Path $tmp 'universal/model-catalog.md') -Value $catalog -NoNewline -Encoding utf8
@@ -131,7 +131,7 @@ Assert 'stale finding names the model' (($stale | Where-Object { $_.model -eq 'o
 Assert 'stale finding names the successor' (($stale | Where-Object { $_.successor -match 'qwen2.5-coder' }).Count -ge 1)
 
 # no supersession marks -> no findings
-$tmp2 = Join-Path $env:TEMP "grimdex-model2-$(Get-Random)"
+$tmp2 = Join-Path ([IO.Path]::GetTempPath()) "grimdex-model2-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path (Join-Path $tmp2 'universal') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $tmp2 'projects/p1') | Out-Null
 Set-Content -Path (Join-Path $tmp2 'universal/model-catalog.md') -Value $catalog -NoNewline -Encoding utf8

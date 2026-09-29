@@ -10,7 +10,7 @@ function Assert($label, $cond) {
 }
 
 # ---------- fixture: a clean mini-KB (git repo with upstream) ----------
-$sandbox = Join-Path $env:TEMP "grimdex-sweep-$(Get-Random)"
+$sandbox = Join-Path ([IO.Path]::GetTempPath()) "grimdex-sweep-$(Get-Random)"
 $bare = Join-Path $sandbox 'origin.git'
 $kb = Join-Path $sandbox 'kb'
 New-Item -ItemType Directory -Force -Path $sandbox | Out-Null
@@ -30,6 +30,12 @@ Set-Content (Join-Path $kb 'projects' 'p1' 'decisions' 'd001-first.md') -Value '
 Set-Content (Join-Path $kb 'projects' 'p1' 'decisions' 'd002-second.md') -Value "# d002`nSee [[d001-first]]."
 Commit-Kb 'init'
 git -C $kb push -q -u origin main
+
+# ---------- compiled-check fallback (grimdex-d044): no scripts/grimdex-check/
+# in this fixture at all, so Invoke-GrimdexMechanicalChecks MUST fall back to
+# the pwsh implementations below rather than erroring or returning nothing.
+Assert 'no grimdex-check source -> Get-GrimdexCompiledCheckBinary returns null' `
+    ($null -eq (Get-GrimdexCompiledCheckBinary -GrimdexRoot $kb))
 
 # ---------- clean KB -> zero findings ----------
 $findings = @(Invoke-GrimdexMechanicalChecks -GrimdexRoot $kb)
@@ -51,6 +57,20 @@ Assert 'stale candidate -> warn' ($stale.Count -eq 1 -and $stale[0].severity -eq
 Assert 'README is not a candidate file' (-not ($inbox | Where-Object project -eq 'README'))
 Remove-Item $cand
 
+# ---------- inbox staleness respects a logged PROMOTIONS-LOG disposition ----------
+Set-Content $cand -Value "## Old rule`n**Filed:** 2026-05-01"
+Set-Content (Join-Path $kb 'universal' 'PROMOTIONS-LOG.md') -Value @"
+## 2026-05-10 — Old rule — DEFERRED
+**From:** projects/p1 (candidate filed 2026-05-01)
+"@
+$stale = @(Test-GrimdexInboxStaleness -GrimdexRoot $kb)
+Assert 'dispositioned stale candidate -> info, not warn' ($stale.Count -eq 1 -and $stale[0].severity -eq 'info')
+Assert 'info message names the ledger' ($stale[0].message.Contains('PROMOTIONS-LOG.md'))
+Remove-Item (Join-Path $kb 'universal' 'PROMOTIONS-LOG.md')
+$stale = @(Test-GrimdexInboxStaleness -GrimdexRoot $kb)
+Assert 'no ledger entry -> stays warn (loop may be broken)' ($stale.Count -eq 1 -and $stale[0].severity -eq 'warn')
+Remove-Item $cand
+
 # ---------- *.sync.md is NOT a promotion candidate ----------
 Set-Content (Join-Path $kb 'universal' 'promotions' 'laptop.sync.md') `
     -Value "---`nkind: rule-sync`n---`n## not a candidate heading"
@@ -64,6 +84,13 @@ Assert 'dead relative link -> 1 warn' ($f.Count -eq 1 -and $f[0].severity -eq 'w
 Set-Content (Join-Path $kb 'projects' 'p1' 'notes.md') -Value "[root-relative](GRIMDEX.md)"
 Assert 'root-relative link resolves' (@(Test-GrimdexLinks -GrimdexRoot $kb).Count -eq 0)
 Remove-Item (Join-Path $kb 'projects' 'p1' 'notes.md')
+
+# ---------- archived snapshots are skipped ----------
+New-Item -ItemType Directory -Force -Path (Join-Path $kb 'projects' 'p1' 'archive' 'old') | Out-Null
+Set-Content (Join-Path $kb 'projects' 'p1' 'archive' 'old' 'frozen.md') -Value "[dead](nope.md) and [[no_such_entity]]"
+Assert 'archive/ dead link not flagged' (@(Test-GrimdexLinks -GrimdexRoot $kb).Count -eq 0)
+Assert 'archive/ dangling wikilink not flagged' (@(Test-GrimdexWikilinks -GrimdexRoot $kb).Count -eq 0)
+Remove-Item -Recurse -Force (Join-Path $kb 'projects' 'p1' 'archive')
 
 # ---------- wikilinks ----------
 Set-Content (Join-Path $kb 'projects' 'p1' 'wl.md') -Value @"
@@ -86,6 +113,20 @@ Set-Content (Join-Path $kb 'projects' 'p1' 'decisions' 'd004-gapped.md') -Value 
 $f = @(Test-GrimdexDecisionIds -GrimdexRoot $kb)
 Assert 'gap -> info naming the missing id' (@($f | Where-Object { $_.severity -eq 'info' -and $_.message.Contains('d003') }).Count -eq 1)
 Remove-Item (Join-Path $kb 'projects' 'p1' 'decisions' 'd004-gapped.md')
+
+# ---------- stale decision-number leases (grimdex-d042) ----------
+New-Item -ItemType Directory -Force -Path (Join-Path $kb 'scripts') | Out-Null
+Copy-Item (Join-Path $PSScriptRoot 'decision-lease.sh') (Join-Path $kb 'scripts' 'decision-lease.sh')
+$leasesDir = Join-Path $kb 'projects' 'p1' 'decisions' '.leases'
+New-Item -ItemType Directory -Force -Path $leasesDir | Out-Null
+$expired = Join-Path $leasesDir 'd900.lease'
+Set-Content $expired -Value "pid=1`nhost=h`nts=x`ntag=old"
+(Get-Item $expired).LastWriteTime = (Get-Date).AddHours(-6)
+$f = @(Test-GrimdexStaleLeases -GrimdexRoot $kb)
+Assert 'expired lease -> info finding' (@($f | Where-Object { $_.severity -eq 'info' -and $_.message.Contains('d900') }).Count -eq 1)
+Assert 'expired lease file actually removed' (-not (Test-Path $expired))
+Assert 'no lingering findings on a clean re-run' (@(Test-GrimdexStaleLeases -GrimdexRoot $kb).Count -eq 0)
+Remove-Item -Recurse -Force $leasesDir -ErrorAction SilentlyContinue
 
 # ---------- repo state ----------
 Set-Content (Join-Path $kb 'dirty.md') -Value 'x'

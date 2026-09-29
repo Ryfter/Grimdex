@@ -8,12 +8,14 @@ function Get-GrimdexTaskDefinition {
         [Parameter(Mandatory)][string]$GrimdexRoot
     )
     $pwshPath = (Get-Command pwsh.exe -ErrorAction SilentlyContinue)?.Source ?? 'pwsh.exe'
-    $conhost = Join-Path $env:SystemRoot 'System32' 'conhost.exe'
+    # Describes a Windows Task Scheduler task, so it must build off-Windows too (tests on macOS,
+    # where SystemRoot is unset). macOS/Linux scheduling lives in install-schedule.sh.
+    $conhost = "$($env:SystemRoot ?? 'C:\Windows')\System32\conhost.exe"
     if ($Kind -eq 'pull') {
-        $entry = Join-Path $GrimdexRoot 'scripts' 'run-sync.ps1'
+        $entry = "$($GrimdexRoot.TrimEnd('\'))\scripts\run-sync.ps1"
         $argument = "`"$pwshPath`" -NoProfile -File `"$entry`""
     } else {
-        $entry = Join-Path $GrimdexRoot 'scripts' 'run-scheduled.ps1'
+        $entry = "$($GrimdexRoot.TrimEnd('\'))\scripts\run-scheduled.ps1"
         $argument = "`"$pwshPath`" -NoProfile -File `"$entry`" -Kind $Kind"
     }
     $taskName = switch ($Kind) {

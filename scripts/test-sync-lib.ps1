@@ -10,7 +10,7 @@ function Assert($label, $cond) {
 }
 
 # ---------- fixture: a mini-KB root ----------
-$root = Join-Path $env:TEMP "grimdex-sync-$(Get-Random)"
+$root = Join-Path ([IO.Path]::GetTempPath()) "grimdex-sync-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'config') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'universal' 'promotions') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'universal' 'claude-rules') | Out-Null
@@ -19,11 +19,22 @@ Set-Content (Join-Path $root 'universal' 'claude-rules' 'context7.md') -Value "o
 $promoLog = Join-Path $root 'universal' 'PROMOTIONS-LOG.md'
 Set-Content $promoLog -Value "# Promotions log`n`n<!-- grimdex:log-top -->`n"
 
+# ---------- hostname helper (cross-platform; $env:COMPUTERNAME is Windows-only) ----------
+Assert 'Get-GrimdexHostName returns non-empty' (-not [string]::IsNullOrWhiteSpace((Get-GrimdexHostName)))
+
 # ---------- role detection ----------
 Set-Content (Join-Path $root 'config' 'sync.json') -Value '{ "hub": "HUBPC" }'
 Assert 'hub hostname -> hub' ((Get-GrimdexRole -GrimdexRoot $root -ComputerName 'HUBPC') -eq 'hub')
 Assert 'hub match is case-insensitive' ((Get-GrimdexRole -GrimdexRoot $root -ComputerName 'hubpc') -eq 'hub')
+Assert 'hub match tolerates a .local/DNS suffix' ((Get-GrimdexRole -GrimdexRoot $root -ComputerName 'hubpc.local') -eq 'hub')
+Assert 'config hub with suffix also matches short name' ((& {
+    Set-Content (Join-Path $root 'config' 'sync.json') -Value '{ "hub": "hubpc.lan" }'
+    $r = Get-GrimdexRole -GrimdexRoot $root -ComputerName 'HUBPC'
+    Set-Content (Join-Path $root 'config' 'sync.json') -Value '{ "hub": "HUBPC" }'
+    $r
+}) -eq 'hub')
 Assert 'other hostname -> spoke' ((Get-GrimdexRole -GrimdexRoot $root -ComputerName 'LAPTOP') -eq 'spoke')
+Assert 'empty ComputerName -> spoke (never false-positive hub)' ((Get-GrimdexRole -GrimdexRoot $root -ComputerName '') -eq 'spoke')
 Remove-Item (Join-Path $root 'config' 'sync.json')
 Assert 'missing config -> spoke (safe default)' ((Get-GrimdexRole -GrimdexRoot $root -ComputerName 'HUBPC') -eq 'spoke')
 Set-Content (Join-Path $root 'config' 'sync.json') -Value 'not json {'

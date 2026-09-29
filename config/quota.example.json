@@ -1,0 +1,16 @@
+{
+  "defaults": {
+    "ceiling_percent": 85,
+    "relax_min_window_minutes": 10080,
+    "relax_within_minutes": 1440
+  },
+  "workers": {
+    "example-high-tier": { "provider": "example-provider", "window": "secondary" },
+    "example-shared":    { "provider": "example-shared-provider", "window": "secondary", "ceiling_percent": 50 },
+    "example-scoped":    { "provider": "example-provider", "window": "example-scoped-window" }
+  },
+  "probe": {
+    "cache_ttl_seconds": 300,
+    "statusline_path": "~/.claude/grimdex-quota-statusline.json"
+  }
+}

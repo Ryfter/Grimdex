@@ -30,7 +30,7 @@ foreach ($r in $pending) {
     $abs = Join-Path $GrimdexRoot ($p.target -replace '/', '\')
     Write-Host "`n=== $($p.target)  (from $($p.machine), $($p.timestamp)) ===" -ForegroundColor Cyan
     if ($p.note) { Write-Host "note: $($p.note)" }
-    $tmp = Join-Path $env:TEMP ("grimdex-review-{0}.md" -f [IO.Path]::GetRandomFileName())
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("grimdex-review-{0}.md" -f [IO.Path]::GetRandomFileName())
     Set-Content $tmp -Value $p.content -NoNewline -Encoding utf8
     git --no-pager -C $GrimdexRoot diff --no-index -- $abs $tmp
     Remove-Item $tmp -ErrorAction SilentlyContinue

@@ -16,10 +16,18 @@ function Get-GrimdexJunctionState {
     )
     if (-not (Test-Path $KnowledgePath)) { return 'missing' }
     $item = Get-Item $KnowledgePath -Force
-    if ($item.LinkType -ne 'Junction') { return 'real-dir' }
-    $resolvedTarget = (Resolve-Path $Target).Path.TrimEnd('\')
-    $linkTarget = ([string]$item.Target).TrimEnd('\')
+    # Windows uses a junction; macOS/Linux have no junctions, so a directory symlink is the equivalent.
+    if ($item.LinkType -notin 'Junction', 'SymbolicLink') { return 'real-dir' }
+    $resolvedTarget = (Resolve-Path $Target).Path.TrimEnd('\', '/')
+    $linkTarget = ([string]$item.Target).TrimEnd('\', '/')
     if ($linkTarget -ieq $resolvedTarget) { return 'linked' } else { return 'linked-elsewhere' }
+}
+
+function New-GrimdexLink {
+    # Junction on Windows (no admin needed); directory symlink elsewhere.
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Target)
+    $type = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+    New-Item -ItemType $type -Path $Path -Target $Target | Out-Null
 }
 
 function Sync-GrimdexRules {
@@ -87,7 +95,7 @@ function Install-GrimdexRulesJunction {
             throw "$RulesPath is already a junction to a different target: $existing. Refusing to touch it."
         }
         'missing' {
-            New-Item -ItemType Junction -Path $RulesPath -Target $mirror | Out-Null
+            New-GrimdexLink -Path $RulesPath -Target $mirror
             return [pscustomobject]@{ state = 'linked'; action = 'created'; backup = $null }
         }
     }
@@ -117,7 +125,7 @@ function Install-GrimdexRulesJunction {
 
     Rename-Item -Path $RulesPath -NewName (Split-Path $backup -Leaf)
     try {
-        New-Item -ItemType Junction -Path $RulesPath -Target $mirror | Out-Null
+        New-GrimdexLink -Path $RulesPath -Target $mirror
         if (-not (Get-ChildItem $RulesPath -Filter *.md | Select-Object -First 1)) {
             throw 'Junction verification failed: no rule files readable through the junction.'
         }
@@ -152,7 +160,7 @@ function Install-GrimdexJunction {
             throw "$KnowledgePath is already a junction to a different target: $existing. Refusing to touch it."
         }
         'missing' {
-            New-Item -ItemType Junction -Path $KnowledgePath -Target $Target | Out-Null
+            New-GrimdexLink -Path $KnowledgePath -Target $Target
             return [pscustomobject]@{ state = 'linked'; action = 'created'; backup = $null }
         }
     }
@@ -177,7 +185,7 @@ function Install-GrimdexJunction {
 
     Rename-Item -Path $KnowledgePath -NewName (Split-Path $backup -Leaf)
     try {
-        New-Item -ItemType Junction -Path $KnowledgePath -Target $Target | Out-Null
+        New-GrimdexLink -Path $KnowledgePath -Target $Target
         if (-not (Test-Path (Join-Path $KnowledgePath 'GRIMDEX.md'))) {
             throw 'Junction verification failed: GRIMDEX.md not readable through the junction.'
         }
@@ -318,4 +326,52 @@ function Initialize-OperatorNetworkConfig {
     Save-OperatorNetworkConfig -GrimdexRoot $GrimdexRoot -Config $cfg | Out-Null
     $mode = if ($useTailnet) { 'lan+tailnet' } else { 'lan' }
     return [pscustomobject]@{ action = 'created'; path = $path; mode = $mode }
+}
+
+# --- Seeded example configs (spec 2026-09-28 Part A) ---
+
+function Initialize-GrimdexExampleConfigs {
+    <#
+      Offers a starting point for each instance config that is missing. Candidates are
+      config/<name>.example.json (plain, generic) and examples/operator-setup/<name>.json
+      (a scrubbed copy of a real operator's setup, shipped by the engine). Existing configs
+      are never touched. -Choice operator falls back to plain when no operator example exists.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$GrimdexRoot,
+        [ValidateSet('operator', 'plain', 'skip')][string]$Choice,
+        [switch]$NonInteractive,
+        # Never seeded: the mode is asked for by setup itself, and a copied scrub config
+        # would silently defeat the publish scrubber's fail-closed check.
+        [string[]]$Exclude = @('grimdex-mode.json', 'publish-scrub.json')
+    )
+    $configDir = Join-Path $GrimdexRoot 'config'
+    if (-not (Test-Path $configDir -PathType Container)) { return }
+    $opDir = Join-Path $GrimdexRoot 'examples' 'operator-setup'
+    $names = [System.Collections.Generic.SortedSet[string]]::new()
+    foreach ($f in Get-ChildItem $configDir -Filter '*.example.json' -File) { [void]$names.Add(($f.Name -replace '\.example\.json$', '.json')) }
+    if (Test-Path $opDir) { foreach ($f in Get-ChildItem $opDir -Filter '*.json' -File) { [void]$names.Add($f.Name) } }
+
+    foreach ($x in $Exclude) { [void]$names.Remove($x) }
+    $missing = @($names | Where-Object { -not (Test-Path (Join-Path $configDir $_)) })
+    if (-not $Choice -and $missing.Count) {
+        if ($NonInteractive) { $Choice = 'skip' }
+        else {
+            Write-Host "  Missing instance configs: $($missing -join ', ')"
+            $hasOp = Test-Path $opDir
+            $prompt = if ($hasOp) { '  Start from [o]perator example setup (modelled on a real rig), [p]lain examples, or [s]kip? [s]' } else { '  Start from [p]lain examples, or [s]kip? [s]' }
+            $a = Read-Host $prompt
+            $Choice = if ($hasOp -and $a -match '^[Oo]') { 'operator' } elseif ($a -match '^[Pp]') { 'plain' } else { 'skip' }
+        }
+    }
+    foreach ($n in $names) {
+        $dest = Join-Path $configDir $n
+        if (Test-Path $dest) { [pscustomobject]@{ name = $n; action = 'exists' }; continue }
+        $op = Join-Path $opDir $n
+        $plain = Join-Path $configDir ($n -replace '\.json$', '.example.json')
+        $action = 'skipped'
+        if ($Choice -eq 'operator' -and (Test-Path $op)) { Copy-Item $op $dest; $action = 'copied-operator' }
+        elseif ($Choice -in 'operator', 'plain' -and (Test-Path $plain)) { Copy-Item $plain $dest; $action = 'copied-plain' }
+        [pscustomobject]@{ name = $n; action = $action }
+    }
 }

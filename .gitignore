@@ -4,3 +4,8 @@
 !.claude/settings.json
 # Scheduled-routine transcripts (durable record = the committed logs)
 logs/
+
+# Instance-only config (never published): the rules-file mode choice, and the publish
+# scrubber's identifier list (the list of what is personal is itself personal).
+config/grimdex-mode.json
+config/publish-scrub.json

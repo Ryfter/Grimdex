@@ -1,0 +1,17 @@
+{
+  "mode": "lan+tailnet",
+  "operator_browser_on_server": false,
+  "bind": "all-interfaces",
+  "announce": {
+    "localhost_ok": false,
+    "home_lan": {
+      "hostname": "<hub-host>"
+    },
+    "tailnet": {
+      "enabled": true,
+      "hostname": "<hub-host>",
+      "magic_dns_suffix": "<tailnet>.ts.net"
+    }
+  },
+  "notes": "Home LAN: http://<hub-host>:<port>/ — Office (tailnet): http://<hub-host>.<tailnet>.ts.net:<port>/"
+}

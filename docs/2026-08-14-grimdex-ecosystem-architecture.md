@@ -25,7 +25,7 @@ Grimdex Baton = the action layer.**
 | **Grimdex** | The public framework. | Governs **how** AI-augmented coding is done: lessons, conventions, schemas, rules, project guidance, universal rules, verification expectations, security expectations, and disciplined promotion. |
 | **Grimlore** | An optional long-term knowledge/context layer. | Remembers **why** decisions were made, **who/what** the work is for — design rationale, history, environment, hardware, organization, audience, models, research, and project context. |
 | **Grimdex Baton** | The action/orchestration layer. | Determines **what happens next** and **when**, then executes: coding, routing, agents, models, workflows, testing, verification, movement, and delivery. |
-| **Grimdex-Know** | A maintainer's private, backed-up personal Grimdex instance. | **Not a separate architecture component.** It is the personalized Grimdex framework holding one owner's accumulated information, kept in its own private repository. |
+| **The private data repo** | A maintainer's private, backed-up personal Grimdex instance. | **Not a separate architecture component.** It is the personalized Grimdex framework holding one owner's accumulated information, kept in its own private repository. |
 
 ### What each layer contains
 
@@ -119,15 +119,15 @@ Grimdex was rules only"*). The line that keeps it corrected is between the two k
 Test: if removing the text would leave a rule unjustified, it belongs to Grimdex. If it would
 leave an agent uninformed but still correctly governed, it belongs to Grimlore.
 
-### Critical clarification: Grimdex-Know is not a layer
+### Critical clarification: the private data repo is not a layer
 
-Do **not** place Grimdex-Know in diagrams as a peer beside Grimdex, Grimlore, or Baton. The
+Do **not** place the private data repo in diagrams as a peer beside Grimdex, Grimlore, or Baton. The
 public downloads Grimdex and personalizes it with their own accumulated information;
-"Grimdex-Know" is merely the name this project uses for the private backup of that
+"the private data repo" is merely the name this project uses for the private backup of that
 personalized instance. Every adopter has an equivalent, whatever they call it.
 
 Corollary: the **public** Grimdex repo is not anyone's personal knowledge store. It is
-the framework others download and personalize (see `d010` — de-Kevin the public engine).
+the framework others download and personalize (see `d010` — de-personalize the public engine).
 
 ## 2. Boundary tests
 
@@ -256,7 +256,7 @@ implementation yet.
 
 - **Open Brain / AWS is not part of this branch of the architecture.** Do not use it to
   shape these decisions unless it is explicitly reintroduced.
-- Grimdex-Know is **not** an architectural peer or a separate knowledge service.
+- the private data repo is **not** an architectural peer or a separate knowledge service.
 - The public Grimdex repo is **not** anyone's personal knowledge store.
 - Do **not** collapse Grimlore context into Grimdex merely because it is useful. Useful
   context can still be the wrong *kind* of information for Grimdex.
@@ -288,7 +288,7 @@ OKF-oriented long-term knowledge layer that remembers **why** decisions were mad
 the work serves, and the surrounding project/user/environment context, while preserving
 project isolation. Grimdex Baton is the action/orchestration layer that determines **what
 happens next** and **when**, then executes the work under Grimdex governance using
-relevant Grimlore context. Grimdex-Know is not another component — it is a private,
+relevant Grimlore context. the private data repo is not another component — it is a private,
 backed-up, personalized Grimdex instance.
 
 ---
@@ -298,7 +298,7 @@ backed-up, personalized Grimdex instance.
 | Decision | Relationship |
 |---|---|
 | `d009` — Grimdex ↔ application-KB boundary (meta vs domain knowledge) | Compatible and extended. d009 split *knowledge about building software* from *an app's subject matter*. This brief adds a third axis inside the first: **how** (Grimdex) vs **why/who/context** (Grimlore). |
-| `d010` — de-Kevin the public engine | Honored. This copy is the genericized public template; the instance-specific reading lives in the private instance. |
+| `d010` — de-personalize the public engine | Honored. This copy is the genericized public template; the instance-specific reading lives in the private instance. |
 | `d032`/`d033` — Grimdex standalone; Grimdex ↔ Baton mutual independence | Unchanged. Baton consumes Grimdex; neither requires the other to function. |
 | Reserved name **Grimlore** (held for a future general "second-brain" KB) | **Closed — spent here.** The context layer *is* Grimlore. The general/non-coding knowledge need d009's revisit-if anticipated lands in it too, rather than in a third store invented later. |
 

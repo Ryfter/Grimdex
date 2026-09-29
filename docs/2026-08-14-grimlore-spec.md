@@ -151,7 +151,7 @@ tightens that locally — permitted, since stricter local conventions remain con
 - **Required in Grimlore:** `type`, `title`, `description`. Description quality drives whether
   an agent retrieves the right context at all; leaving it optional would be false economy.
 - **Required on anything an agent wrote:** `generated: {by, at}`, using the actor convention
-  (`claude/opus-5`, `human:kevin`, `process:sweep`).
+  (`claude/opus-5`, `human:maintainer`, `process:sweep`).
 - **Type vocabulary (initial, extend freely):** `Rationale`, `History`, `Audience`,
   `Organization`, `Environment`, `Hardware`, `Model`, `Research`, `Constraint`, `Standard`
   (an external spec, with its canonical link in `resource`), `Account` (a service the owner
@@ -260,7 +260,7 @@ x-grimdex:
   milestone: v2.0                  # optional
 
   decisions: [canvas-d007]         # qualified decision ids (see id-conventions.md)
-  assignees: [human:kevin, claude/opus-5]   # OKF actor convention — see below
+  assignees: [human:maintainer, claude/opus-5]   # OKF actor convention — see below
 ---
 ```
 
@@ -274,7 +274,7 @@ x-grimdex:
 | `decisions` | Qualified decision ids (`canvas-d007`) linking the context back to the governing decision. |
 | `assignees` | **Who did or owns this work**, in OKF's actor convention. |
 
-**`assignees` reuses OKF's actor convention deliberately** — `human:kevin`,
+**`assignees` reuses OKF's actor convention deliberately** — `human:maintainer`,
 `claude/opus-5`, `process:sweep`. In this harness a model genuinely is an assignee: Baton
 dispatches labor to instruments, and "gpt-5.4 built this, a human reviewed it" is a fact worth
 carrying. It also means `assignees` and OKF's own `generated.by` / `verified.by` speak one
@@ -296,7 +296,7 @@ reassigns an issue, and only one of them is knowledge.
 
 ### Still owed — the cross-project convention
 
-Kevin's requirement that *"how that is implemented [be] implemented across all projects"* is a
+The maintainer's requirement that *"how that is implemented [be] implemented across all projects"* is a
 **Grimdex** concern, not a Grimlore one: "every project tracks work on a GitHub Projects board
 with this field set" is a convention — it changes *how* work is done. The `x-grimdex` block
 gives that convention a place to be *referenced from*; it does not create it.
@@ -346,7 +346,7 @@ title: Primary workstation — ~/dev rig
 description: Windows 11 + PowerShell 7 development box; where every ~/dev project is built.
 tags: [hardware, windows, local]
 generated: { by: "claude/opus-5", at: "2026-08-14T19:00:00-06:00" }
-verified: [{ by: "human:kevin", at: "2026-08-14T19:30:00-06:00" }]
+verified: [{ by: "human:maintainer", at: "2026-08-14T19:30:00-06:00" }]
 status: stable
 stale_after: 2027-02-14
 ---

@@ -102,5 +102,80 @@ Assert "example has workers"  ($ex.workers.PSObject.Properties.Name.Count -ge 1)
 $exSel = Select-FleetWorker -Fleet $ex -TaskType 'docs'
 Assert "example routes docs to a worker" ($null -ne $exSel)
 
+Write-Host "Select-FleetWorker -QuotaState"
+$qFleetJson = @'
+{
+  "workers": {
+    "sonnet": { "invoke": "claude-subagent:sonnet", "roles": ["small-code","review"], "tier": "mid",   "availability": "available" },
+    "haiku":  { "invoke": "claude-subagent:haiku",  "roles": ["small-code","docs"],   "tier": "cheap", "availability": "available" },
+    "grok":   { "invoke": "cli:grok",               "roles": ["bulk-code"],           "tier": "build", "availability": "available" },
+    "opus":   { "invoke": "claude-subagent:opus",   "roles": ["review"],              "tier": "high",  "availability": "available" },
+    "codex":  { "invoke": "plugin:codex-rescue",    "roles": ["on-call"],             "gate": "explicit-call-only" }
+  },
+  "policy": {}
+}
+'@
+$qf = $qFleetJson | ConvertFrom-Json
+
+function QS($pairs) {
+    $h = @{}
+    foreach ($k in $pairs.Keys) {
+        $h[$k] = [pscustomobject]@{ OverCeiling = $pairs[$k]; Note = "claude 7d 91% > ceiling 85%" }
+    }
+    return $h
+}
+
+# Backward compatibility: omitting -QuotaState changes nothing.
+$base = Select-FleetWorker -Fleet $qf -TaskType 'small-code'
+Assert "no -QuotaState -> cheapest (haiku)" ($base.Name -eq 'haiku')
+Assert "no -QuotaState -> NeedsAsk false"   ($base.NeedsAsk -eq $false)
+
+# Downgrade by fall-through: haiku over ceiling, sonnet available.
+$dg = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -QuotaState (QS @{ haiku = $true })
+Assert "over-ceiling worker excluded"   ($dg.Name -eq 'sonnet')
+Assert "downgrade is not silent"        ($dg.Reason -like '*haiku excluded*')
+Assert "reason carries the breach note" ($dg.Reason -like '*91%*')
+Assert "downgrade does not ask"         ($dg.NeedsAsk -eq $false)
+
+# Fail open: unknown workers and false values never exclude.
+$fo = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -QuotaState (QS @{ grok = $true })
+Assert "unrelated breach does not affect role" ($fo.Name -eq 'haiku')
+$fo2 = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -QuotaState (QS @{ haiku = $false })
+Assert "OverCeiling false does not exclude" ($fo2.Name -eq 'haiku')
+$fo3 = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -QuotaState @{}
+Assert "empty quota state changes nothing" ($fo3.Name -eq 'haiku')
+
+# Shared-window cascade empties the pool -> return anyway with NeedsAsk.
+$allClaude = QS @{ haiku = $true; sonnet = $true }
+$empty = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -QuotaState $allClaude
+Assert "empty pool still returns a worker" ($null -ne $empty)
+Assert "empty pool sets NeedsAsk"          ($empty.NeedsAsk -eq $true)
+Assert "empty pool reason names the breach" ($empty.Reason -like '*91%*')
+Assert "empty pool reason asks"            ($empty.Reason -like '*ask*')
+
+# Explicit call bypasses quota exclusion entirely.
+$ex = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -Explicit -QuotaState (QS @{ haiku = $true })
+Assert "-Explicit ignores the ceiling" ($ex.Name -eq 'haiku')
+Assert "-Explicit does not force ask"  ($ex.NeedsAsk -eq $false)
+
+# A role with no candidates at all still returns null (quota must not change this).
+Assert "unknown role still null" `
+    ($null -eq (Select-FleetWorker -Fleet $qf -TaskType 'nonexistent' -QuotaState (QS @{ haiku = $true })))
+
+Write-Host "empty workers map degrades cleanly"
+$emptyFleet = '{ "workers": {}, "policy": {} }' | ConvertFrom-Json
+$errsBefore = $Error.Count
+$emptyPick = Select-FleetWorker -Fleet $emptyFleet -TaskType 'small-code'
+Assert "empty workers -> null, no throw" ($null -eq $emptyPick)
+Assert "empty workers emits no error records" ($Error.Count -eq $errsBefore)
+
+Write-Host "workers without a roles key (d037 alias rows)"
+$aliasFleet = '{ "workers": { "gemini-flash": { "alias_of": "agy", "model": "x" },
+                               "haiku": { "roles": ["docs"], "tier": "cheap" } }, "policy": {} }' | ConvertFrom-Json
+$errsBefore = $Error.Count
+$aliasPick = Select-FleetWorker -Fleet $aliasFleet -TaskType 'docs'
+Assert "roles-less worker skipped, no throw" ($aliasPick -and $aliasPick.Name -eq 'haiku')
+Assert "roles-less worker emits no error records" ($Error.Count -eq $errsBefore)
+
 if ($script:fail) { Write-Host "`n$script:fail FAILED" -ForegroundColor Red; exit 1 }
 else { Write-Host "`nAll passed" -ForegroundColor Green }

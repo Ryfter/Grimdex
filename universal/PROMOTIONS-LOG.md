@@ -28,7 +28,7 @@ any provisional law whose condition is met, or whose framework still doesn't exi
 cycles. Ordinary rules get no exemption.
 **Disposition reasoning:** Law #7 forbids anticipatory rules, but a new framework cannot generate
 evidence before it exists and cannot be built before its rules do — taken literally, law #7 makes
-every new framework unbuildable. Kevin, 2026-08-15: *"You can't earn the status of law, when you
+every new framework unbuildable. The maintainer, 2026-08-15: *"You can't earn the status of law, when you
 need the laws to be created for the new frameworks to function."* A named, marked, audited
 exception preserves law #7's prohibition; silently ignoring the law when inconvenient (the default
 outcome) would corrode every rule that did earn its place. **Applied surgically, not as a

@@ -1,0 +1,19 @@
+{
+  "defaults": {
+    "ceiling_percent": 85,
+    "relax_min_window_minutes": 10080,
+    "relax_within_minutes": 1440
+  },
+  "workers": {
+    "opus":   { "provider": "claude", "window": "secondary" },
+    "sonnet": { "provider": "claude", "window": "secondary" },
+    "haiku":  { "provider": "claude", "window": "secondary" },
+    "fable":  { "provider": "claude", "window": "claude-weekly-scoped-fable" },
+    "codex":  { "provider": "codex",  "window": "secondary", "ceiling_percent": 50 },
+    "grok":   { "provider": "grok",   "window": "secondary" }
+  },
+  "probe": {
+    "cache_ttl_seconds": 300,
+    "statusline_path": "~/.baton/claude-quota.json"
+  }
+}

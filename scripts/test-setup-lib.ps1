@@ -16,7 +16,7 @@ function New-FakeGrimdexRepo($path) {
     git -C $path -c user.email=t@t -c user.name=t commit -q -m init
 }
 
-$sandbox = Join-Path $env:TEMP "grimdex-setup-$(Get-Random)"
+$sandbox = Join-Path ([IO.Path]::GetTempPath()) "grimdex-setup-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path $sandbox | Out-Null
 $target = Join-Path $sandbox 'target'
 New-FakeGrimdexRepo $target
@@ -223,8 +223,33 @@ Assert 'operator-network: missing + non-interactive -> skipped' ($skip2.action -
 
 # cleanup (delete junctions as links, then the sandbox)
 foreach ($p in $kp, $kp2, $kp3, $kp4) {
-    if ((Test-Path $p) -and (Get-Item $p -Force).LinkType -eq 'Junction') { (Get-Item $p -Force).Delete() }
+    if ((Test-Path $p) -and (Get-Item $p -Force).LinkType -in 'Junction', 'SymbolicLink') { (Get-Item $p -Force).Delete() }
 }
+# --- Initialize-GrimdexExampleConfigs (seeded operator examples, spec 2026-09-28) ---
+$ex = Join-Path $sandbox 'ex-root'
+New-Item -ItemType Directory -Force -Path (Join-Path $ex 'config'), (Join-Path $ex 'examples' 'operator-setup') | Out-Null
+Set-Content (Join-Path $ex 'config' 'fleet.example.json') '{"plain":true}'
+Set-Content (Join-Path $ex 'config' 'quota.example.json') '{"plain":true}'
+Set-Content (Join-Path $ex 'config' 'sync.example.json') '{"plain":true}'
+Set-Content (Join-Path $ex 'examples' 'operator-setup' 'fleet.json') '{"operator":true}'
+Set-Content (Join-Path $ex 'config' 'sync.json') '{"mine":true}'
+Set-Content (Join-Path $ex 'config' 'publish-scrub.example.json') '{}'
+Set-Content (Join-Path $ex 'config' 'grimdex-mode.example.json') '{}'
+$r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot $ex -Choice operator)
+function ExRow($n) { $r | Where-Object name -eq $n }
+Assert 'examples: operator copy used when present' ((ExRow 'fleet.json').action -eq 'copied-operator' -and (Get-Content (Join-Path $ex 'config' 'fleet.json') -Raw) -match 'operator')
+Assert 'examples: plain fallback when no operator example' ((ExRow 'quota.json').action -eq 'copied-plain')
+Assert 'examples: existing config never overwritten' ((ExRow 'sync.json').action -eq 'exists' -and (Get-Content (Join-Path $ex 'config' 'sync.json') -Raw) -match 'mine')
+Assert 'examples: scrub + mode configs never seeded' (-not (ExRow 'publish-scrub.json') -and -not (ExRow 'grimdex-mode.json') -and -not (Test-Path (Join-Path $ex 'config' 'publish-scrub.json')))
+Remove-Item (Join-Path $ex 'config' 'fleet.json'), (Join-Path $ex 'config' 'quota.json')
+$r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot $ex -Choice plain)
+Assert 'examples: plain choice ignores operator example' ((ExRow 'fleet.json').action -eq 'copied-plain' -and (Get-Content (Join-Path $ex 'config' 'fleet.json') -Raw) -match 'plain')
+Remove-Item (Join-Path $ex 'config' 'fleet.json'), (Join-Path $ex 'config' 'quota.json')
+$r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot $ex -NonInteractive)
+Assert 'examples: non-interactive without choice skips' ((ExRow 'fleet.json').action -eq 'skipped' -and -not (Test-Path (Join-Path $ex 'config' 'fleet.json')))
+$r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot (Join-Path $sandbox 'no-such'))
+Assert 'examples: no config dir -> nothing to do' ($r.Count -eq 0)
+
 Remove-Item -Recurse -Force $sandbox
 if ($failures -gt 0) { Write-Host "`n$failures FAILURE(S)" -ForegroundColor Red; exit 1 }
 Write-Host "`nAll setup-lib tests passed." -ForegroundColor Green

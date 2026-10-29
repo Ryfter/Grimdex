@@ -78,10 +78,18 @@ $g = Select-FleetWorker -Fleet $f -TaskType 'repo-op'
 Assert "repo-op -> gh"            ($g.Name -eq 'gh')
 $rev = Select-FleetWorker -Fleet $f -TaskType 'review'
 Assert "review -> opus (codex gated out)" ($rev.Name -eq 'opus')
-$revx = Select-FleetWorker -Fleet $f -TaskType 'on-call' -Explicit
+$revx = Select-FleetWorker -Fleet $f -TaskType 'on-call' -Explicit -Name 'codex'
 Assert "on-call -Explicit -> codex allowed" ($revx.Name -eq 'codex')
 $oncall = Select-FleetWorker -Fleet $f -TaskType 'on-call'
 Assert "on-call (no -Explicit) -> null" ($null -eq $oncall)
+# Approval is bound to the named worker: with two gated on-call workers, -Explicit returns
+# the one named, never the other (security audit 2026-10-29).
+$two = $fleetJson | ConvertFrom-Json
+$two.workers | Add-Member -NotePropertyName 'codex-b' -NotePropertyValue ($two.workers.codex | ConvertTo-Json -Depth 8 | ConvertFrom-Json)
+Assert "two gated: -Name codex-b -> codex-b" ((Select-FleetWorker -Fleet $two -TaskType 'on-call' -Explicit -Name 'codex-b').Name -eq 'codex-b')
+Assert "two gated: -Name codex -> codex"     ((Select-FleetWorker -Fleet $two -TaskType 'on-call' -Explicit -Name 'codex').Name -eq 'codex')
+$threw = $false; try { Select-FleetWorker -Fleet $two -TaskType 'on-call' -Explicit | Out-Null } catch { $threw = $true }
+Assert "-Explicit without -Name refuses" $threw
 $none = Select-FleetWorker -Fleet $f -TaskType 'nonexistent-role'
 Assert "unknown role -> null"     ($null -eq $none)
 
@@ -154,7 +162,7 @@ $onlyFailed = [pscustomobject]@{ workers = [pscustomobject]@{
                                          trial = [pscustomobject]@{ passed = 3; total = 35 } } }
     policy = [pscustomobject]@{} }
 Assert "a failed trial is never the answer" ($null -eq (Select-FleetWorker -Fleet $onlyFailed -TaskType 'bulk-code' -Now $now))
-Assert "-Explicit still reaches it"           ((Select-FleetWorker -Fleet $onlyFailed -TaskType 'bulk-code' -Explicit -Now $now).Name -eq 'c-laguna')
+Assert "-Explicit still reaches it"           ((Select-FleetWorker -Fleet $onlyFailed -TaskType 'bulk-code' -Explicit -Name 'c-laguna' -Now $now).Name -eq 'c-laguna')
 $halfFailed = [pscustomobject]@{ workers = [pscustomobject]@{
         'half' = [pscustomobject]@{ roles = @('docs'); tier = 'cheap'; trial = [pscustomobject]@{ passed = 17; total = 35 } }
         'fine' = [pscustomobject]@{ roles = @('docs'); tier = 'cheap'; trial = [pscustomobject]@{ passed = 18; total = 35 } } }
@@ -250,7 +258,7 @@ Assert "empty pool reason names the breach" ($empty.Reason -like '*91%*')
 Assert "empty pool reason asks"            ($empty.Reason -like '*ask*')
 
 # Explicit call bypasses quota exclusion entirely.
-$ex = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -Explicit -QuotaState (QS @{ haiku = $true })
+$ex = Select-FleetWorker -Fleet $qf -TaskType 'small-code' -Explicit -Name 'haiku' -QuotaState (QS @{ haiku = $true })
 Assert "-Explicit ignores the ceiling" ($ex.Name -eq 'haiku')
 Assert "-Explicit does not force ask"  ($ex.NeedsAsk -eq $false)
 
@@ -291,7 +299,7 @@ $cx = [pscustomobject]@{ workers = [pscustomobject]@{
     glm       = [pscustomobject]@{ roles = @('bulk-code'); tier = 'cheap' } }
   policy = [pscustomobject]@{ builder_chain = @('cc-ling','glm'); code_exclude = @('(?i)ling') } }
 Assert "excluded model skipped in the chain for bulk-code" ((Select-FleetWorker -Fleet $cx -TaskType 'bulk-code').Name -eq 'glm')
-Assert "excluded model not picked for code even with -Explicit" ((Select-FleetWorker -Fleet $cx -TaskType 'bulk-code' -Explicit).Name -eq 'glm')
+Assert "excluded model not picked for code even with -Explicit" ((Select-FleetWorker -Fleet $cx -TaskType 'bulk-code' -Explicit -Name 'cc-ling').Name -eq $null)
 Assert "excluded model still used for non-code roles" ((Select-FleetWorker -Fleet $cx -TaskType 'docs').Name -eq 'cc-ling')
 
 if (Test-Path (Join-Path $liveRoot 'config' 'models.json')) {

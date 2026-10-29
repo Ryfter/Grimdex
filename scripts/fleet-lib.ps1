@@ -28,6 +28,8 @@ function Select-FleetWorker {
         [Parameter(Mandatory)]$Fleet,
         [Parameter(Mandatory)][string]$TaskType,
         [switch]$Explicit,
+        # The worker the user named. With -Explicit, the approval covers this worker only.
+        [string]$Name,
         [switch]$LateWindow,
         [hashtable]$QuotaState,
         [datetimeoffset]$Now = [datetimeoffset]::UtcNow
@@ -36,15 +38,21 @@ function Select-FleetWorker {
     $order = 0
     $cands = @()
     foreach ($p in $Fleet.workers.PSObject.Properties) {
-        $name = $p.Name
-        $w = $Fleet.workers.$name
+        $wName = $p.Name   # not $name: PowerShell names are case-insensitive and $Name is a parameter
+        $w = $Fleet.workers.$wName
         # Not every worker declares roles (d037 added alias rows); strict mode throws on a raw read.
         $roles = if ($w.PSObject.Properties['roles']) { @($w.roles) } else { @() }
         if ($roles -contains $TaskType) {
-            $cands += [pscustomobject]@{ Name = $name; Worker = $w; Order = $order }
+            $cands += [pscustomobject]@{ Name = $wName; Worker = $w; Order = $order }
         }
         $order++
     }
+    if ($Explicit -and -not $Name) {
+        # Approval of a gated worker is by name; without one, another gated worker with the
+        # same role could be returned instead (security audit 2026-10-29).
+        throw 'Select-FleetWorker -Explicit needs -Name: the worker the user approved.'
+    }
+    if ($Name) { $cands = @($cands | Where-Object { $_.Name -eq $Name }) }
     if (-not $Explicit) {
         $cands = @($cands | Where-Object { -not $_.Worker.PSObject.Properties['gate'] })
         # A failed trial is the evidence a model can't finish, and auto-selection has no way to

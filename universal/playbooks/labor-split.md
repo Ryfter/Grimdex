@@ -39,7 +39,7 @@ if ($null -eq $fleet) {
 $result = Select-FleetWorker -Fleet $fleet -TaskType "<role>"
 ```
 
-Add `-Explicit` **only** when the user explicitly names a gated worker by name (e.g., "ask Codex to review this").
+Add `-Explicit -Name <worker>` **only** when the user explicitly names a gated worker by name (e.g., "ask Codex to review this" → `-Explicit -Name codex`). The approval covers that worker only; `-Explicit` without `-Name` is refused.
 
 Add `-LateWindow` when it is late in the weekly quota window (e.g., Sunday afternoon). This tells the selector to prefer and burn higher-tier models before they reset.
 

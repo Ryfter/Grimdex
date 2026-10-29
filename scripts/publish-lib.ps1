@@ -108,6 +108,21 @@ function Find-GrimdexTreeLeaks {
     }
 }
 
+function Get-GrimdexRemoteTips {
+    # Commit-ish ids the remote itself advertises (git ls-remote) that exist locally. Empty
+    # when -Remote is empty or the remote can't be reached, so callers fall back to a full scan.
+    param([Parameter(Mandatory)][string]$Root, [string]$Remote)
+    if (-not $Remote) { return }
+    $lines = @(git -C $Root ls-remote -- $Remote 2>$null)
+    if ($LASTEXITCODE -ne 0) { return }
+    foreach ($l in $lines) {
+        $sha = (-split $l)[0]
+        if ($sha -notmatch '^[0-9a-f]{40,64}$') { continue }
+        git -C $Root cat-file -e "$sha^{commit}" 2>$null
+        if ($LASTEXITCODE -eq 0) { $sha }
+    }
+}
+
 function Find-GrimdexPushLeaks {
     # The pre-push gate. $RefLines are git's stdin lines: "<local ref> <local sha> <remote
     # ref> <remote sha>". For each pushed range it scans every commit's message and added
@@ -116,18 +131,25 @@ function Find-GrimdexPushLeaks {
     param(
         [Parameter(Mandatory)][string]$Root,
         [Parameter(Mandatory)]$Config,
-        [AllowEmptyCollection()][string[]]$RefLines = @()
+        [AllowEmptyCollection()][string[]]$RefLines = @(),
+        # The URL being pushed to (the hook's $2), asked directly with git ls-remote.
+        [string]$Remote
     )
     foreach ($ln in $RefLines) {
         $parts = -split $ln
         if ($parts.Count -lt 4) { continue }
         $localSha = $parts[1]; $remoteSha = $parts[3]
         if ($localSha -match '^0+$') { continue }   # deleting a remote ref publishes nothing
-        # A new ref may be going to a public remote while the same commits are reachable from
-        # a private remote. Excluding every local remote would then skip leaked-and-deleted
-        # history. First publication pays the cost of scanning the full reachable history.
-        $commits = if ($remoteSha -match '^0+$') { @(git -C $Root rev-list $localSha 2>$null) }
-                   else { @(git -C $Root rev-list "$remoteSha..$localSha" 2>$null) }
+        # A new ref (a tag, a first push) skips only commits the destination itself reports
+        # holding (git ls-remote): they are public already, and rescanning them blocks every tag
+        # on old history. Local tracking refs are never trusted for this; they can be stale or
+        # describe a different URL. If the remote can't be asked, scan the full history.
+        $commits = if ($remoteSha -notmatch '^0+$') { @(git -C $Root rev-list "$remoteSha..$localSha" 2>$null) }
+                   else {
+                       $published = @(Get-GrimdexRemoteTips -Root $Root -Remote $Remote)
+                       if ($published.Count) { @(git -C $Root rev-list $localSha --not @published 2>$null) }
+                       else { @(git -C $Root rev-list $localSha 2>$null) }
+                   }
         if ($LASTEXITCODE -ne 0) { throw "git rev-list failed for pushed ref: $ln" }
         foreach ($c in $commits) {
             $short = $c.Substring(0, [Math]::Min(8, $c.Length))
@@ -135,18 +157,27 @@ function Find-GrimdexPushLeaks {
             if ($LASTEXITCODE -ne 0) { throw "git log failed for pushed commit $c" }
             Find-GrimdexLeaks -Text $msg -Config $Config -Path "commit $short (message)"
             $current = $null
+            $inHeader = $false
             $added = [ordered]@{}
             $diff = @(git -C $Root show --format= --no-color --unified=0 $c 2>$null)
             if ($LASTEXITCODE -ne 0) { throw "git show failed for pushed commit $c" }
             foreach ($d in $diff) {
-                if ($d -match '^\+\+\+ (?:b/)?(.*)$') { $current = $Matches[1]; continue }
+                # A '+++' line names the file only in a file's header (after 'diff --git', before
+                # its first '@@'). Inside a hunk it is content: an added line reading '++ b/x'
+                # must not relabel what follows and borrow a test file's fixture marker.
+                if ($d.StartsWith('diff --git ')) { $inHeader = $true; $current = $null; continue }
+                if ($inHeader) {
+                    if ($d.StartsWith('@@')) { $inHeader = $false }
+                    elseif ($d -match '^\+\+\+ (?:b/)?(.*)$') { $current = $Matches[1] }
+                    continue
+                }
                 if ($d.StartsWith('+') -and $current) {
                     if (-not $added.Contains($current)) { $added[$current] = [System.Collections.Generic.List[string]]::new() }
                     $added[$current].Add($d.Substring(1))
                 }
             }
             foreach ($k in $added.Keys) {
-                Find-GrimdexLeaks -Text ($added[$k] -join "`n") -Config $Config -Path "$k (added in commit $short)"
+                Find-GrimdexLeaks -Text ($added[$k] -join "`n") -Config $Config -Path "$k (added in commit $short)" -MarkerPath $k
             }
         }
         Find-GrimdexTreeLeaks -Root $Root -Config $Config -Source Head -Rev $localSha
@@ -254,7 +285,7 @@ function Install-GrimdexEnginePrePush {
         '#!/bin/sh',
         '# Grimdex publish gate (installed by publish-engine.ps1 -InstallHook). Blocks a push',
         '# when the engine tree holds anything personal. Local only; never committed.',
-        "exec pwsh -NoProfile -File $publishArg -EngineRoot $engineArg -GrimdexRoot $grimdexArg -ScanOnly -PrePush"
+        "exec pwsh -NoProfile -File $publishArg -EngineRoot $engineArg -GrimdexRoot $grimdexArg -ScanOnly -PrePush -Remote `"`$2`""
     ) -join "`n"
     [IO.File]::WriteAllText($hook, $body + "`n", [Text.UTF8Encoding]::new($false))
     if (-not $IsWindows) { chmod +x $hook }

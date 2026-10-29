@@ -177,6 +177,53 @@ git -C $h6 push -q --no-verify private main 2>$null
 git -C $h6 push -q origin main 2>$null
 Assert 'new public ref scans history reachable from a private remote' ($LASTEXITCODE -ne 0)
 
+# A new tag on history that is already on this remote passes: those commits are public already.
+$h8 = New-HookRepo 'hook-tag-old-history'
+Write-File $h8 'old.md' "$leakText`n"; Commit-All $h8
+git -C $h8 push -q --no-verify origin main 2>$null   # an old leak, already public
+Remove-Item (Join-Path $h8 'old.md'); Commit-All $h8
+git -C $h8 push -q origin main 2>$null
+Assert 'cleanup push passes (only the new range is scanned)' ($LASTEXITCODE -eq 0)
+git -C $h8 tag v1 | Out-Null
+git -C $h8 push -q origin v1 2>$null
+Assert 'new tag on already-public history passes' ($LASTEXITCODE -eq 0)
+# ...but a new tag on unpushed commits still has them scanned.
+Write-File $h8 'new.md' "$leakText`n"; Commit-All $h8
+Remove-Item (Join-Path $h8 'new.md'); Commit-All $h8
+git -C $h8 tag v2 | Out-Null
+git -C $h8 push -q origin v2 2>$null
+Assert 'new tag on unpushed leaked history is blocked' ($LASTEXITCODE -ne 0)
+
+# The fixture marker counts in pushed history for test files only, as it does in the tree.
+$h9 = New-HookRepo 'hook-marker-history'
+git -C $h9 push -q origin main 2>$null
+New-Item -ItemType Directory -Force -Path (Join-Path $h9 'scripts') | Out-Null
+Write-File $h9 'scripts/test-fake.ps1' "`$x = '$leakText'  # grimdex:scrub-ok:email`n"; Commit-All $h9
+git -C $h9 push -q origin main 2>$null
+Assert 'marked fixture in a test file passes the history scan' ($LASTEXITCODE -eq 0)
+Write-File $h9 'notes.md' "$leakText  # grimdex:scrub-ok:email`n"; Commit-All $h9
+git -C $h9 push -q origin main 2>$null
+Assert 'the marker outside test files still blocks' ($LASTEXITCODE -ne 0)
+
+# Bypass (review 2026-10-29): an added line '++ b/scripts/test-x.ps1' shows as a '+++' line in
+# the diff; it must not relabel later lines as a test file and borrow its fixture marker.
+$h10 = New-HookRepo 'hook-forged-header'
+git -C $h10 push -q origin main 2>$null
+Write-File $h10 'doc.md' "x`n++ b/scripts/test-x.ps1`n$leakText grimdex:scrub-ok:email`n"; Commit-All $h10
+Remove-Item (Join-Path $h10 'doc.md'); Commit-All $h10
+git -C $h10 push -q origin main 2>$null
+Assert 'a forged +++ line inside a hunk does not excuse a leak' ($LASTEXITCODE -ne 0)
+
+# Bypass (review 2026-10-29): a local tracking ref is not proof the remote holds a commit.
+$h11 = New-HookRepo 'hook-stale-tracking'
+git -C $h11 push -q origin main 2>$null
+Write-File $h11 'gone.md' "$leakText`n"; Commit-All $h11
+Remove-Item (Join-Path $h11 'gone.md'); Commit-All $h11
+git -C $h11 update-ref refs/remotes/origin/stale HEAD
+git -C $h11 tag v1 | Out-Null
+git -C $h11 push -q origin v1 2>$null
+Assert 'a stale tracking ref does not hide unpushed history from a new tag' ($LASTEXITCODE -ne 0)
+
 # Hook installation treats paths as shell data and never destroys a pre-existing hook.
 Assert 'shell hook path quoting escapes apostrophes' ((ConvertTo-GrimdexShSingleQuoted "a'b") -eq "'a'`"'`"'b'")
 $h7 = Join-Path $sandbox 'hook-existing'

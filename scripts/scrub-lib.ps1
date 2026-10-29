@@ -70,8 +70,12 @@ function Find-GrimdexLeaks {
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
         [Parameter(Mandatory)]$Config,
-        [string]$Path = ''
+        [string]$Path = '',
+        # The bare file path the marker allowlist is matched against, when $Path is a label
+        # such as "<file> (added in commit <sha>)". Defaults to $Path.
+        [string]$MarkerPath
     )
+    if (-not $MarkerPath) { $MarkerPath = $Path }
     $lines = $Text -split "`r?`n"
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -87,7 +91,7 @@ function Find-GrimdexLeaks {
             }
         }
         $excused = @()
-        $normalPath = $Path.Replace('\', '/')
+        $normalPath = $MarkerPath.Replace('\', '/')
         if (@($script:GrimdexScrubMarkerPaths | Where-Object { $normalPath -like $_ }).Count) {
             $mk = [regex]::Match($scanLine, 'grimdex:scrub-ok:([a-z,-]+)')
             if ($mk.Success) { $excused = $mk.Groups[1].Value -split ',' }

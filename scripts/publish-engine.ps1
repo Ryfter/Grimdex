@@ -17,6 +17,7 @@ param(
     [switch]$Apply,
     [switch]$ScanOnly,
     [switch]$PrePush,
+    [string]$Remote,   # -PrePush: the URL being pushed to (the hook's $2)
     [switch]$InstallHook
 )
 $ErrorActionPreference = 'Stop'
@@ -39,7 +40,7 @@ if ($ScanOnly) {
     # -PrePush: git's pre-push stdin names the pushed ranges; scan those (history + tip).
     $leaks = @(if ($PrePush) {
         $refLines = @([Console]::In.ReadToEnd() -split "`r?`n" | Where-Object { $_ })
-        Find-GrimdexPushLeaks -Root $EngineRoot -Config $cfg -RefLines $refLines
+        Find-GrimdexPushLeaks -Root $EngineRoot -Config $cfg -RefLines $refLines -Remote $Remote
     } else { Find-GrimdexTreeLeaks -Root $EngineRoot -Config $cfg })
     if ($leaks.Count) {
         Write-Host "Grimdex publish gate: $($leaks.Count) personal reference(s) in $EngineRoot — push blocked." -ForegroundColor Red

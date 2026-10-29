@@ -91,6 +91,31 @@ Assert 'binary skipped'          (@(Find-GrimdexTreeLeaks -Root $eng -Config $cf
 # missing engine root throws
 $threw = $false; try { Get-GrimdexPublishPlan -GrimdexRoot $src -EngineRoot (Join-Path $sandbox 'nope') -Config $cfg -Manifest $man | Out-Null } catch { $threw = $true }
 Assert 'missing engine root throws' $threw
+$threw = $false; try { Find-GrimdexTreeLeaks -Root $sandbox -Config $cfg | Out-Null } catch { $threw = $true }
+Assert 'tree scan fails closed when git enumeration fails' $threw
+
+# manifest paths cannot escape either checkout, and a forged plan is re-checked on write
+$escapeManifest = [pscustomobject]@{
+    sync = @(); engine_owned = @(); never = @()
+    examples = [ordered]@{ 'docs/guide.md' = '../outside-engine.md' }
+}
+$escapePlan = Get-GrimdexPublishPlan -GrimdexRoot $src -EngineRoot $eng -Config $cfg -Manifest $escapeManifest
+Assert 'traversal destination refused' ($escapePlan.items[0].action -eq 'refused' -and $escapePlan.items[0].note -match 'escapes root')
+$forged = [pscustomobject]@{ items = @([pscustomobject]@{ action = 'new'; dest = '../outside-engine.md'; content = 'x' }) }
+$threw = $false; try { Invoke-GrimdexPublish -Plan $forged -EngineRoot $eng | Out-Null } catch { $threw = $true }
+Assert 'apply re-checks a forged traversal plan' $threw
+Assert 'traversal wrote nothing outside engine' (-not (Test-Path (Join-Path $sandbox 'outside-engine.md')))
+
+if (-not $IsWindows) {
+    $outside = Join-Path $sandbox 'outside-target.md'
+    Write-File $sandbox 'outside-target.md' "do not overwrite`n"
+    $linkedDest = Join-Path $eng 'linked.md'
+    New-Item -ItemType SymbolicLink -Path $linkedDest -Target $outside | Out-Null
+    $linkPlan = [pscustomobject]@{ items = @([pscustomobject]@{ action = 'changed'; dest = 'linked.md'; content = 'owned' }) }
+    $threw = $false; try { Invoke-GrimdexPublish -Plan $linkPlan -EngineRoot $eng | Out-Null } catch { $threw = $true }
+    Assert 'apply refuses a symlink destination' $threw
+    Assert 'symlink target was not overwritten' ((Get-Content $outside -Raw) -eq "do not overwrite`n")
+}
 
 # --- pre-push hook: scans every pushed commit (messages + added lines) and the pushed tip ---
 function New-HookRepo($name) {
@@ -140,6 +165,27 @@ git -C $h5 add -A | Out-Null
 git -C $h5 -c user.email=t@example.com -c user.name=t commit -q -m "thanks $leakText" | Out-Null
 git -C $h5 push -q origin main 2>$null
 Assert 'hook blocks a leak in a commit message' ($LASTEXITCODE -ne 0)
+
+# A new public ref must scan commits even when a private remote already reaches them.
+$h6 = New-HookRepo 'hook-private-remote'
+$privateBare = Join-Path $sandbox 'private.git'
+git init -q --bare $privateBare
+git -C $h6 remote add private $privateBare
+Write-File $h6 'private.md' "$leakText`n"; Commit-All $h6
+Remove-Item (Join-Path $h6 'private.md'); Commit-All $h6
+git -C $h6 push -q --no-verify private main 2>$null
+git -C $h6 push -q origin main 2>$null
+Assert 'new public ref scans history reachable from a private remote' ($LASTEXITCODE -ne 0)
+
+# Hook installation treats paths as shell data and never destroys a pre-existing hook.
+Assert 'shell hook path quoting escapes apostrophes' ((ConvertTo-GrimdexShSingleQuoted "a'b") -eq "'a'`"'`"'b'")
+$h7 = Join-Path $sandbox 'hook-existing'
+New-Item -ItemType Directory -Force -Path (Join-Path $h7 '.git' 'hooks') | Out-Null
+Write-File $h7 '.git/hooks/pre-push' "#!/bin/sh`necho keep-me`n"
+$beforeHook = Get-Content (Join-Path $h7 '.git' 'hooks' 'pre-push') -Raw
+$threw = $false; try { Install-GrimdexEnginePrePush -EngineRoot $h7 -GrimdexRoot $src -ScriptRoot $PSScriptRoot | Out-Null } catch { $threw = $true }
+Assert 'installer refuses to overwrite a foreign pre-push hook' $threw
+Assert 'foreign pre-push hook remains unchanged' ((Get-Content (Join-Path $h7 '.git' 'hooks' 'pre-push') -Raw) -eq $beforeHook)
 
 Remove-Item -Recurse -Force $sandbox
 

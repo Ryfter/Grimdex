@@ -57,6 +57,13 @@ Assert 'stale candidate -> warn' ($stale.Count -eq 1 -and $stale[0].severity -eq
 Assert 'README is not a candidate file' (-not ($inbox | Where-Object project -eq 'README'))
 Remove-Item $cand
 
+# ---------- recommendations counted separately ----------
+$cand2 = Join-Path $kb 'universal' 'promotions' 'p2.md'
+Set-Content $cand2 -Value "## Rule one`n**Kind:** rule`n**Filed:** $((Get-Date).ToString('yyyy-MM-dd'))`n`n## Tool idea`n**Kind:** recommendation`n**Filed:** $((Get-Date).ToString('yyyy-MM-dd'))"
+$inbox = @(Get-GrimdexInboxStatus -GrimdexRoot $kb)
+Assert 'recommendations counted' ($inbox.Count -eq 1 -and $inbox[0].candidates -eq 2 -and $inbox[0].recommendations -eq 1)
+Remove-Item $cand2
+
 # ---------- inbox staleness respects a logged PROMOTIONS-LOG disposition ----------
 Set-Content $cand -Value "## Old rule`n**Filed:** 2026-05-01"
 Set-Content (Join-Path $kb 'universal' 'PROMOTIONS-LOG.md') -Value @"

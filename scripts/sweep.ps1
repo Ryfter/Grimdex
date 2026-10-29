@@ -14,7 +14,9 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'sync-lib.ps1')   # also dot-sources sweep-lib.ps1
 
 if (-not $NoSync) {
-    $sync = Sync-GrimdexRepo -GrimdexRoot $GrimdexRoot -SkipPush
+    # Autostash: an unrelated uncommitted edit (another session's, or the operator's) must not
+    # block the sweep. It blocked five days running, 2026-10-25 to 10-29.
+    $sync = Sync-GrimdexRepo -GrimdexRoot $GrimdexRoot -SkipPush -Autostash
     Write-Host "  sync: pulled=$($sync.pulled)"
 }
 

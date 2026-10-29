@@ -8,7 +8,7 @@ function Assert($label, $cond) {
     if ($cond) { Write-Host "PASS  $label" -ForegroundColor Green }
     else { Write-Host "FAIL  $label" -ForegroundColor Red; $script:failures++ }
 }
-function Kinds($text, $cfg) { ,@(Find-GrimdexLeaks -Text $text -Config $cfg | ForEach-Object kind) }
+function Kinds($text, $cfg, $path = '') { ,@(Find-GrimdexLeaks -Text $text -Config $cfg -Path $path | ForEach-Object kind) }
 
 $cfg = [pscustomobject]@{
     replacements = @(
@@ -53,7 +53,8 @@ Assert 'tailnet ipv6 found'          ((Kinds ('fd7a:' + '115c:a1e0::1') $empty) 
 Assert 'git ssh url not email' ((Kinds 'git@github.com:org/repo.git' $empty).Count -eq 0)
 
 # --- scrub-ok marker: names the shapes it excuses; bare marker excuses nothing; deny never ---
-Assert 'named marker excuses its shape' ((Kinds ('a' + '@b.com  # grimdex:' + 'scrub-ok:email') $empty).Count -eq 0)
+Assert 'named marker excuses its fixture shape' ((Kinds ('a' + '@b.com  # grimdex:' + 'scrub-ok:email') $empty 'scripts/test-scrub-lib.ps1').Count -eq 0)
+Assert 'named marker outside fixture code is no bypass' ((Kinds ('a' + '@b.com  # grimdex:' + 'scrub-ok:email') $empty 'README.md') -contains 'email')
 Assert 'bare marker excuses nothing'    ((Kinds ('a' + '@b.com  # grimdex:' + 'scrub-ok') $empty) -contains 'email')
 Assert 'marker excuses only named kind' ((Kinds ('a' + '@b.com 192.' + '168.1.9 # grimdex:' + 'scrub-ok:email') $empty) -contains 'lan-ip')
 Assert 'marker never hides deny'        ((Kinds ('secretproj  # grimdex:' + 'scrub-ok:email') $cfg) -contains 'deny')
@@ -63,6 +64,7 @@ Assert 'yourname placeholder ok' ((Kinds '/Users/yourname/Dev' $empty).Count -eq
 Assert 'deny hit found'      ((Kinds 'the secretproj repo' $cfg) -contains 'deny')
 Assert 'deny is case-insensitive' ((Kinds 'ALICE was here' $cfg) -contains 'deny')
 Assert 'allow suppresses line' ((Kinds 'Copyright (c) 2026 Alice' $cfg).Count -eq 0)
+Assert 'allow cannot hide a second leak on the line' ((Kinds 'Copyright (c) 2026 Alice secretproj' $cfg) -contains 'deny')
 $f = @(Find-GrimdexLeaks -Text "ok`nsecretproj`nok" -Config $cfg -Path 'x.md')
 Assert 'finding carries path + line' ($f.Count -eq 1 -and $f[0].path -eq 'x.md' -and $f[0].line -eq 2)
 

@@ -1,0 +1,934 @@
+{
+  "workers": {
+    "grok": {
+      "invoke": "cli:grok",
+      "roles": [
+        "review"
+      ],
+      "tier": "build",
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-05T06:51:29Z",
+        "window": "weekly",
+        "source": "manual",
+        "detail": "out of tokens (the operator 2026-10-05); reset time unknown"
+      },
+      "note": "Re-seated 2026-09-02 (grimdex-d037): was default bulk builder, now the code-review seat + a voice in the BIG-planning consensus panel. Its strength is catching problems, not grinding volume. Coding Agent Index v1.4: Grok 4.5 high = 64 (4 below Opus 5). Headless: `grok -p`; mind the inline-quoting footgun (routing.md)."
+    },
+    "sonnet": {
+      "invoke": "claude-subagent:sonnet",
+      "roles": [
+        "small-code"
+      ],
+      "tier": "mid",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "parallel_with": [
+        "grok"
+      ]
+    },
+    "fable": {
+      "invoke": "claude-subagent:fable",
+      "roles": [
+        "thinking",
+        "planning"
+      ],
+      "tier": "high",
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      }
+    },
+    "opus": {
+      "invoke": "claude-subagent:opus",
+      "roles": [
+        "thinking",
+        "planning",
+        "review"
+      ],
+      "tier": "high",
+      "availability": {
+        "state": "scarce",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      }
+    },
+    "haiku": {
+      "invoke": "claude-subagent:haiku",
+      "roles": [
+        "docs",
+        "summary",
+        "language"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      }
+    },
+    "codex": {
+      "invoke": "cli:codex",
+      "invoke_alt": "plugin:codex-rescue",
+      "roles": [
+        "on-call"
+      ],
+      "tier": "high",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "gate": "explicit-call-only; skip-if-weekly>50%",
+      "pool": "ChatGPT/Codex quota pool — both invoke paths (cli + plugin) land on it (d016)",
+      "note": "Standalone CLI, not just a Claude Code plugin: codex-cli 0.149.0 at /opt/homebrew/bin/codex, ChatGPT login (verified 2026-08-21). plugin:codex-rescue remains the in-Claude reach path. Headless: codex exec; -m/--model, -c model_reasoning_effort=<e>.",
+      "model_pin": {
+        "default": "gpt-5.6-sol",
+        "current_local_pin": "~/.codex/config.toml pins gpt-5.6-sol + reasoning_effort=high (verified 2026-08-21) — high is a deliberate spend-up; OpenAI's default effort is medium",
+        "effort_ladder": "none|low|medium(default)|high|xhigh|max — drop sol to medium on routine calls to save tokens; reserve high+ for deep/rescue work",
+        "tiers_5_6": "sol $5/$30 (flagship) | terra $2/$12 (mid — OpenAI: competitive with GPT-5.5 at 2x cheaper) | luna $0.20/$1.20 (cheap/fast — the Haiku analog by price). Per-1M in/out, post 2026-07-30 cuts (luna -80%, terra -20%); Terra/Luna also consume fewer Codex sub credits since the cut",
+        "seating": "sol@high = deep/rescue only; sol@medium = routine on-call; terra = mid-seat candidate (Sonnet-like); luna = docs/summary/bulk (Haiku-like). Operator hearsay 2026-08-21: 'luna@high is pretty good, a bit cheaper than sol' — by price that description fits terra, not luna; NEITHER is benchmarked (no routing-ratings.jsonl rows). Bench before seating either as a finisher.",
+        "zdr": "UNVERIFIED for the ChatGPT-login path — confirm retention posture before routing private-repo contents here."
+      }
+    },
+    "agy": {
+      "invoke": "cli:agy",
+      "roles": [
+        "bulk-code",
+        "small-code",
+        "thinking",
+        "planning",
+        "design-2nd-opinion"
+      ],
+      "tier": "mid",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "pool": "separate quota pool (Antigravity / Google) — consumes no Anthropic/xAI/Cursor/Kiro/OpenRouter limits",
+      "note": "Antigravity CLI (agy 1.1.23, ~/.local/bin/agy). Promoted 2026-09-02 (grimdex-d037) from design-2nd-opinion/on-call to a routine workhorse — the operator: 'the new flash model is looking REALLY good.' Headless: `agy -p --model <id> [--mode plan] [--output-format json] [--json-schema <f>]`. Tool auto-approval is `--dangerously-skip-permissions`, BUT Claude Code's auto-mode classifier blocks any command containing that flag — dispatch agy from a context where Bash isn't classifier-gated, or add a Bash allow-rule for `agy`, or use `--mode plan` (read-only, no approval needed) for planning calls.",
+      "model_pin": {
+        "default": "gemini-3.8-flash-medium",
+        "planning_review": "gemini-3.8-flash-high — use for review work and when agy sits on the BIG-planning consensus panel",
+        "available": "gemini-3.8-flash-{low,medium,high}, gemini-3.7/3.6-flash-*, gemini-3.1-pro-{low,high}, claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium (agy models)",
+        "effort": "the -low/-medium/-high suffix IS the effort tier; `--effort` flag is redundant when the suffix is set",
+        "zdr": "Google/Antigravity path. the operator approved private Grimdex + Grimlore contents on the OpenRouter open-model paths 2026-09-02; treat agy the same (Google enterprise retention) unless he says otherwise."
+      },
+      "bench": "Artificial Analysis Coding Agent Index v1.4: Gemini 3.8 Flash (high) = 61 — just above GPT-5.6 Terra (60), ~3 below Grok 4.5 high (64), 7 below Opus 5 (68). Operator: at max effort reportedly ~Claude-5-ish; treat 61 as a floor for -high use. Full table in grimdex-d037.",
+      "caveat": "New seat, no routing-ratings.jsonl rows yet — rate early runs. Fast + cheap-pool but still a review gate before it finishes judgment work (grimdex-d030)."
+    },
+    "gemini-flash": {
+      "alias_of": "agy",
+      "model": "gemini-3.8-flash-high",
+      "note": "Name used in policy.planning_consensus + policy.counsel — same worker as `agy`, pinned high for the panel."
+    },
+    "gh": {
+      "invoke": "cli:gh",
+      "roles": [
+        "pr",
+        "issues",
+        "releases",
+        "repo-op"
+      ]
+    },
+    "cursor": {
+      "invoke": "cli:cursor-agent",
+      "roles": [
+        "review",
+        "on-call"
+      ],
+      "tier": "high",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "gate": "explicit-call-only",
+      "pool": "separate quota pool (Cursor sub) — does not consume Anthropic/xAI limits",
+      "note": "Binary self-names 'agent', which collides with Grok's 'agent.exe' (Grok wins on PATH). Always cli:cursor-agent, never bare 'agent'. Headless: -p --output-format json.",
+      "fable_effort": {
+        "default": "claude-fable-5-high",
+        "default_thinking": "claude-fable-5-thinking-high",
+        "escalate_only_if_needed": [
+          "claude-fable-5-xhigh",
+          "claude-fable-5-thinking-xhigh"
+        ],
+        "rule": "high is the seat for both ladders; xhigh is an exception that needs a reason, not a default",
+        "scope": "Cursor-reached Fable only; says nothing about the claude-subagent:fable seat",
+        "zdr": "NONE — all ten claude-fable-5-* are flagged (NO ZDR); prompts may be retained. Keep private-repo contents off this path unless explicitly approved."
+      }
+    },
+    "kiro": {
+      "invoke": "cli:kiro-cli",
+      "roles": [
+        "bulk-code",
+        "docs",
+        "summary"
+      ],
+      "tier": "build",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "pool": "separate quota pool (Kiro credits) — does not consume Anthropic/xAI/Cursor limits",
+      "note": "BINARY COLLISION: /usr/local/bin/kiro is a DIFFERENT product (the Kiro IDE's 'code' launcher — opens the GUI editor). The agent CLI is ~/.local/bin/kiro-cli (v2.17.0). Always cli:kiro-cli, never bare 'kiro'. Headless: chat --no-interactive; reads stdin (quote-safe).",
+      "model_pin": {
+        "default": "claude-haiku-4.5",
+        "rule": "d043 — never 'auto'. Kiro's own default IS auto at 1.00x credits, which makes spend unattributable.",
+        "credit_multipliers": "qwen3-coder-next 0.05x | minimax-m2.1 0.15x | deepseek-3.2 0.25x | minimax-m2.5 0.25x | claude-haiku-4.5 0.40x | glm-5 0.50x | auto 1.00x | claude-sonnet-4(.5) 1.30x",
+        "effort_ladder": "--effort low|medium|high|xhigh|max available; unset by default. Credit cost scales with it.",
+        "zdr": "Non-Anthropic models on this pool (deepseek-3.2, minimax-m2.x, glm-5, qwen3-coder-next) are third-party. Keep private-repo contents off this path unless explicitly approved."
+      },
+      "caveat": "stdout carries ANSI escapes even under NO_COLOR=1/TERM=dumb, plus a 'Credits: N / Time: Ns' footer. Strict-JSON roles (review, judge, triage) withheld until a stripping shim exists."
+    },
+    "opencode": {
+      "invoke": "cli:opencode",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "tier": "build",
+      "availability": {
+        "state": "unknown",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "pool": "FREE promo — $0, near-unlimited tokens; consumes no metered pool at all",
+      "note": "npm ships the binary as 'opencode.exe' inside opencode-ai/bin, symlinked to 'opencode' on PATH — the .exe is a packaging artifact, not a Windows build. Headless: 'opencode run'; reads stdin (quote-safe). NOT 'opencode -p' — no top-level -p exists, and inside run -p means --password.",
+      "model_pin": {
+        "default": "opencode/big-pickle",
+        "identity": "self-reports as 'ox-alpha (powered by big-pickle)' — a stealth codename; the only model in `opencode models` not suffixed -free",
+        "expires": "~2026-08-27 (promo is ~1 week from 2026-08-20). On expiry this row starts failing or billing — swap to opencode/nemotron-3.5-lightning-free or wire a paid provider.",
+        "credentials": "ZERO configured on this box (`opencode providers list` -> 0 credentials, no provider env vars). Only hosted opencode/* models resolve.",
+        "zdr": "NONE. Free hosted inference on an unidentified preview model — assume prompts are retained and may train the vendor's model. Keep private-repo contents (Grimdex's KB included) off this path unless explicitly approved."
+      },
+      "caveat": "FIRST EVIDENCE IS A FAILURE — routing-ratings.jsonl 2026-08-20: capability=reasoning rating=bad failure_category=no-change (run go-2026-08-20T22-55-11 t1). 'No-change' = dispatched and produced nothing, the silent no-op the codex row warns about. Seat on bulk/draft labor behind a review gate, never as a finisher, per grimdex-d030. stdout carries ANSI plus a '> build / <model>' header, so strict-JSON roles are withheld; use --format json + a stripping shim to unlock them."
+    },
+    "openrouter-glm": {
+      "invoke": "cli:bash",
+      "invoke_args": "~/Dev/AtomicKestrel/tools/or-free.sh --default [--code] z-ai/glm-5.3-flash \"<prompt>\"   (prompt also on stdin)",
+      "roles": [
+        "bulk-code",
+        "docs",
+        "summary",
+        "draft"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "pool": "separate quota pool (the operator's OpenRouter credit balance) — consumes no Anthropic/xAI/Cursor/Kiro limits",
+      "note": "Transport is a RAW CURL via `or-free.sh --default` — NOT opencode. Investigated 2026-09-03: GLM 5.3 Flash itself is clean (raw API: correct code, `<`/`&&` literal, 3/3, ~$8e-5, <2s round-trip), but `opencode run` is slow (~2 min startup) and INTERMITTENTLY HTML-escapes code output (`&lt;` `&gt;` `&amp;` — forkdeck 2026-09-02, 2 of 3 runs). Use `--code` for code-gen (html.unescape guard). GLM 5.3 Flash (z-ai/Zhipu) is the only model the `default`-workspace guardrail permits (allowlist of one, across Z.AI / Novita / DeepInfra); `openrouter/free` also passes. Every other pinned slug -> `Filter by Guardrails`. Widen at https://openrouter.ai/workspaces/default/guardrails.",
+      "model_pin": {
+        "default": "z-ai/glm-5.3-flash",
+        "rule": "the guardrail permits only this + openrouter/free; do not pin another slug without confirming the allowlist changed",
+        "zdr": "z-ai is third-party; prompts may be retained. the operator approved private-repo contents (Grimdex + Grimlore) on THIS path 2026-09-02 — a deliberate exception to the standing 'keep private KB off third-party' rule."
+      },
+      "caveat": "Fast reasoner, shallow on deep architecture / adversarial review / nuanced prose — seat on bulk-code/draft/docs/summary behind a review gate, never a finisher on judgment work (grimdex-d030). GLM 5.3 Flash is a REASONING model: it spends completion tokens on hidden reasoning first, so `max_tokens` must be generous (or-free.sh sets 8000) or `content` comes back empty. No routing-ratings.jsonl rows yet — rate early runs."
+    },
+    "openrouter-free": {
+      "invoke": "cli:bash",
+      "invoke_args": "~/Dev/AtomicKestrel/tools/or-free.sh --default [--code] openrouter/free \"<prompt>\"   (prompt also on stdin)",
+      "roles": [
+        "bulk-code",
+        "docs",
+        "summary",
+        "draft",
+        "language",
+        "design-2nd-opinion"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:00:00Z",
+        "window": "none",
+        "source": "manual"
+      },
+      "pool": "OpenRouter 'Free Models Router' (`openrouter/free`) — $0, genuinely free. Consumes no Anthropic/xAI/Cursor/Kiro limits and no OpenRouter credit. the operator added `openrouter/free` to the `default` workspace allowlist alongside GLM 5.3 Flash.",
+      "note": "Transport is `or-free.sh --default openrouter/free` (raw curl, ~1s) — switched off `opencode` 2026-09-03 (slow + intermittent HTML-escaping, same as openrouter-glm). `openrouter/free` is a ROUTER — it picks among genuinely-free models per request (seen: nvidia/nemotron-3.5-lightning:free), so which model answers and the quality vary run to run. Free endpoints are often rate-limited; on 429 or empty content, fall back to `openrouter-glm` (paid GLM 5.3 Flash) or `haiku`. For a SPECIFIC open model rather than the router's pick, drop `--default` to hit the `free-models` workspace ($1/wk cap): deepseek-v3.2-exp / deepseek-chat-v3.1 / deepseek-r1 / glm-4.6 / qwen3-coder / llama-3.3-70b / mistral-small-3.2.",
+      "model_pin": {
+        "default": "openrouter/free",
+        "rule": "the Free Models Router only — never pin a premium slug on this row (the operator: Claude/Grok/Gemini come from their own harness paths; OpenRouter here is the free open set)",
+        "zdr": "Free endpoints are training-permitted third-party. the operator approved private Grimdex + Grimlore contents on the OpenRouter path 2026-09-02 — but prefer `openrouter-glm` for anything sensitive; use this row for generic / scaffolding / high-volume-low-stakes work."
+      },
+      "caveat": "Router output varies model to model — never a finisher on judgment work (grimdex-d030); seat on bulk/draft/docs/summary behind a review gate. Expect intermittent 429s from free-tier capacity. No routing-ratings.jsonl rows yet — rate early runs."
+    },
+    "space-bunny": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m stealth/space-bunny-alpha --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin; clean stdout)",
+      "roles": [
+        "bulk-code",
+        "draft",
+        "small-code"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-25T20:59:51Z",
+        "window": "none",
+        "source": "atomickestrel",
+        "detail": "Command Code promo ended"
+      },
+      "pool": "FREE (Command Code stealth model); consumes no metered pool",
+      "note": "Command Code CLI 1.73.2 (cmd, the operator added 2026-10-01: prioritize). Stealth model, 1M context. Trial 2026-10-01: duration parser 25/26 hidden tests (rejected surrounding spaces the docstring allowed), LRU/TTL cache bug-fix 9/9 with a clean, correct fix; 63 s and 44 s vs kimi-k3 90 s and 170 s; left tests untouched; wrote its own tests.",
+      "model_pin": {
+        "default": "stealth/space-bunny-alpha",
+        "identity": "stealth: vendor and model undisclosed",
+        "expires": "promo: free while it lasts. Stealth promos ended within days before (opencode big-pickle, union-alpha); on failure or billing, fall back to openrouter-glm",
+        "zdr": "NONE assumed (free stealth inference; prompts may be retained). the operator 2026-10-01: private-repo code APPROVED on Command Code models; PII never (names, emails, addresses, account data, credentials)."
+      },
+      "trial": {
+        "passed": 34,
+        "at": "2026-10-01T07:00:00Z",
+        "seconds": 107,
+        "total": 35
+      },
+      "offer": {
+        "output_cost": 0.0,
+        "coding_index": null,
+        "free": true,
+        "checked_at": "2026-10-05T12:11:05Z",
+        "deal_percent": 100.0,
+        "input_cost": 0.0,
+        "term": "while the stealth preview lasts",
+        "deal_label": "Free"
+      }
+    },
+    "kimi-k3": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m moonshotai/kimi-k3 --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "bulk-code",
+        "thinking",
+        "long-context",
+        "multimodal",
+        "review"
+      ],
+      "tier": "build",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:30:00Z",
+        "window": "none",
+        "source": "manual",
+        "detail": "trialled 2026-10-01 (two coding tasks, hidden tests)"
+      },
+      "pool": "Command Code plan (the operator 2026-10-01: Kimi K3 usage allowance raised)",
+      "note": "Kimi K3 (Moonshot) via Command Code: long-horizon coding and knowledge work, multimodal, 1M-token context. Trial 2026-10-01: 26/26 and 9/9 hidden tests (the most correct of the two) but slower (90 s, 170 s). Reach for it on long-horizon, very-large-context or image-bearing work.",
+      "model_pin": {
+        "default": "moonshotai/kimi-k3",
+        "zdr": "the operator 2026-10-01: private-repo code APPROVED on Command Code models; PII never."
+      }
+    },
+    "minimax-m3": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m minimaxai/minimax-m3 --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "bulk-code",
+        "draft",
+        "agents"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:30:00Z",
+        "window": "none",
+        "source": "manual",
+        "detail": "added 2026-10-01, not yet trialled"
+      },
+      "pool": "Command Code GOAT credits, at a Deals-tier discount — DISCOUNTED, still metered, NOT free",
+      "note": "MiniMax M3 via Command Code: frontier coding, agents & native multimodality. -50% discount per the Command Code Deals tier as of 2026-10-01; verify the current % at https://commandcode.ai/docs/plans/goat before assuming it still holds (the CLI does not expose the discount, so this row cannot self-verify). Not yet trialled — treat as draft/bulk until trialled the way space-bunny/kimi-k3 were. the operator named it in the Deals tier 2026-10-01.",
+      "model_pin": {
+        "default": "minimaxai/minimax-m3",
+        "identity": "MiniMax M3 (minimaxai)",
+        "expires": "the -50% discount is promotional and may lapse; on a price change re-read the GOAT plan page",
+        "zdr": "UNVERIFIED for Command Code routing; confirm retention before sending private-repo contents"
+      },
+      "offer": {
+        "coding_index": 58.6,
+        "deal_percent": 50.0,
+        "checked_at": "2026-10-25T20:59:51Z",
+        "input_cost": 0.3,
+        "term": "",
+        "free": false,
+        "output_cost": 1.2,
+        "deal_label": "50% off"
+      },
+      "trial": {
+        "at": "2026-10-20T12:11:05Z",
+        "total": 35,
+        "seconds": 26.5,
+        "passed": 35
+      }
+    },
+    "mimo-pro": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m xiaomi/mimo-v2.6-pro --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "bulk-code",
+        "draft",
+        "agents",
+        "long-context",
+        "multimodal"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:30:00Z",
+        "window": "none",
+        "source": "manual",
+        "detail": "added 2026-10-01, not yet trialled"
+      },
+      "pool": "Command Code GOAT credits, at a Deals-tier discount — DISCOUNTED, still metered, NOT free",
+      "note": "Xiaomi MiMo V2.6 Pro via Command Code: flagship multimodal agentic coding, 1M context. ~-98% discount per the Command Code Deals tier as of 2026-10-01; verify the current % at https://commandcode.ai/docs/plans/goat before assuming it still holds (the CLI does not expose the discount, so this row cannot self-verify). Not yet trialled — treat as draft/bulk until trialled the way space-bunny/kimi-k3 were.",
+      "model_pin": {
+        "default": "xiaomi/mimo-v2.6-pro",
+        "identity": "Xiaomi MiMo V2.6 Pro",
+        "expires": "the ~-98% discount is promotional and may lapse; on a price change re-read the GOAT plan page",
+        "zdr": "UNVERIFIED for Command Code routing; confirm retention before sending private-repo contents"
+      }
+    },
+    "mimo-pro-ultraspeed": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m xiaomi/mimo-v2.6-pro-ultraspeed --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "bulk-code",
+        "draft",
+        "agents",
+        "long-context",
+        "multimodal"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:30:00Z",
+        "window": "none",
+        "source": "manual",
+        "detail": "added 2026-10-01, not yet trialled"
+      },
+      "pool": "Command Code GOAT credits, at a Deals-tier discount — DISCOUNTED, still metered, NOT free",
+      "note": "Low-latency serving tier of MiMo V2.6 Pro (same weights, faster/cheaper serving) via Command Code. ~-99% discount per the Command Code Deals tier as of 2026-10-01; verify the current % at https://commandcode.ai/docs/plans/goat before assuming it still holds (the CLI does not expose the discount, so this row cannot self-verify). Not yet trialled — treat as draft/bulk until trialled the way space-bunny/kimi-k3 were.",
+      "model_pin": {
+        "default": "xiaomi/mimo-v2.6-pro-ultraspeed",
+        "identity": "Xiaomi MiMo V2.6 Pro (ultraspeed serving tier)",
+        "expires": "the ~-99% discount is promotional and may lapse; on a price change re-read the GOAT plan page",
+        "zdr": "UNVERIFIED for Command Code routing; confirm retention before sending private-repo contents"
+      }
+    },
+    "cc-laguna": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m poolside/laguna-s-2.1-free --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "draft",
+        "bulk-code",
+        "small-code"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:30:00Z",
+        "window": "none",
+        "source": "manual",
+        "detail": "added 2026-10-01, not yet trialled"
+      },
+      "pool": "FREE (Command Code zero-billing listing); consumes no metered pool",
+      "note": "Poolside Laguna S 2.1 (free slug) via Command Code: FREE open-weight agentic coding and long-horizon work. 'Free while capacity lasts' — capacity-limited and may vanish without notice; the AK fleet check `kes commandcode` reports when a free slug disappears. Not yet trialled.",
+      "model_pin": {
+        "default": "poolside/laguna-s-2.1-free",
+        "identity": "Poolside Laguna S 2.1, free slug",
+        "expires": "promo: free while capacity lasts; on disappearance fall back to space-bunny",
+        "zdr": "UNVERIFIED for Command Code routing; confirm retention before sending private-repo contents"
+      },
+      "trial": {
+        "at": "2026-10-15T21:04:50Z",
+        "total": 35,
+        "seconds": 462.7,
+        "passed": 26
+      },
+      "offer": {
+        "coding_index": null,
+        "deal_percent": 100.0,
+        "checked_at": "2026-10-25T20:59:51Z",
+        "input_cost": 0.0,
+        "term": "while capacity lasts",
+        "free": true,
+        "output_cost": 0.0,
+        "deal_label": "Free"
+      }
+    },
+    "cc-ling-flash": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m 'inclusionai/ling-3.1-flash:free' --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "draft",
+        "thinking"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-25T20:59:51Z",
+        "window": "none",
+        "source": "atomickestrel",
+        "detail": "Command Code promo ended"
+      },
+      "pool": "FREE (Command Code zero-billing listing); consumes no metered pool",
+      "model_pin": {
+        "default": "inclusionai/ling-3.1-flash:free",
+        "identity": "InclusionAI Ling 3.1 Flash, free slug",
+        "expires": "promo: free slug; on disappearance fall back to space-bunny",
+        "zdr": "UNVERIFIED for Command Code routing; confirm retention before sending private-repo contents"
+      },
+      "trial": {
+        "passed": 34,
+        "at": "2026-10-05T06:08:57Z",
+        "seconds": 147.8,
+        "total": 35
+      },
+      "offer": {
+        "coding_index": null,
+        "term": "while it lasts",
+        "checked_at": "2026-10-14T12:11:05Z",
+        "output_cost": 0.0,
+        "free": true,
+        "deal_percent": 100.0,
+        "deal_label": "Free",
+        "input_cost": 0.0
+      },
+      "note": "Not for programming (the operator 2026-10-05); trial 34/35 on coding tasks notwithstanding."
+    },
+    "cc-ling-sante": {
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m 'inclusionai/ling-3.0-flash-sante:free' --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "roles": [
+        "draft"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-25T20:59:51Z",
+        "window": "none",
+        "source": "atomickestrel",
+        "detail": "Command Code promo ended"
+      },
+      "pool": "FREE (Command Code zero-billing listing); consumes no metered pool",
+      "model_pin": {
+        "default": "inclusionai/ling-3.0-flash-sante:free",
+        "identity": "InclusionAI Ling 3.0 Flash Sante, free slug",
+        "expires": "promo: free slug; on disappearance fall back to space-bunny",
+        "zdr": "UNVERIFIED for Command Code routing; confirm retention before sending private-repo contents"
+      },
+      "trial": {
+        "seconds": 0.0,
+        "at": "2026-10-15T21:04:50Z",
+        "passed": 0,
+        "total": 35
+      },
+      "offer": {
+        "checked_at": "2026-10-15T21:04:50Z",
+        "input_cost": 0.0,
+        "free": true,
+        "deal_percent": 100.0,
+        "term": "while it lasts",
+        "output_cost": 0.0,
+        "deal_label": "Free",
+        "coding_index": null
+      },
+      "note": "Not for programming (the operator 2026-10-05); trial 34/35 on coding tasks notwithstanding."
+    },
+    "muse-spark": {
+      "roles": [
+        "bulk-code",
+        "small-code",
+        "draft",
+        "thinking"
+      ],
+      "model_pin": {
+        "default": "meta/muse-spark-1.3-contributor",
+        "zdr": "Contributor tier: prompts used for training. the operator 2026-10-01: approved, private code OK, PII never."
+      },
+      "availability": {
+        "state": "available",
+        "as_of": "2026-10-01T06:46:00Z",
+        "window": "none",
+        "source": "manual",
+        "detail": "trialled 2026-10-01"
+      },
+      "invoke": "cli:cmd",
+      "tier": "cheap",
+      "trial": {
+        "at": "2026-10-15T12:11:05Z",
+        "total": 35,
+        "seconds": 121.9,
+        "passed": 35
+      },
+      "pool": "Command Code GOAT credits; Contributor tier is ~95% off list ($0.10/$0.20 per 1M in/out vs $1.25/$4.25)",
+      "note": "Meta Muse Spark 1.3, Contributor tier (prompts help train the model; the operator approved 2026-10-01: he likes Meta Muse and is happy to contribute). Page indexes: intelligence 48.1 (highest listed, above GPT-5.6 Sol 47.0), coding 75.8. Trial 2026-10-01: 26/26 + 9/9 hidden tests, the best of four models tried, and the fastest (39 s, 44 s); about 2 cents for both tasks.",
+      "invoke_args": "cmd -p -m meta/muse-spark-1.3-contributor --yolo -t --no-session --skip-onboarding --no-auto-update   (prompt on stdin)",
+      "offer": {
+        "coding_index": null,
+        "deal_percent": 92.0,
+        "checked_at": "2026-10-25T20:59:51Z",
+        "input_cost": 0.1,
+        "term": "",
+        "free": false,
+        "output_cost": 0.2,
+        "deal_label": "Contributor"
+      }
+    },
+    "muse-spark-1-2-contributor": {
+      "offer": {
+        "coding_index": null,
+        "deal_percent": 92.0,
+        "checked_at": "2026-10-25T20:59:51Z",
+        "input_cost": 0.1,
+        "term": "",
+        "free": false,
+        "output_cost": 0.2,
+        "deal_label": "Contributor"
+      },
+      "note": "Discovered by kes commandcode 2026-10-05: Muse Spark 1.2 Contributor (Meta)",
+      "invoke": "cli:cmd",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "invoke_args": "cmd -p -m meta/muse-spark-1.2-contributor --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "tier": "cheap",
+      "trial": {
+        "at": "2026-10-19T12:11:05Z",
+        "total": 35,
+        "seconds": 137.6,
+        "passed": 35
+      },
+      "model_pin": {
+        "default": "meta/muse-spark-1.2-contributor",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      }
+    },
+    "mimo-v2-5-pro": {
+      "offer": {
+        "checked_at": "2026-10-22T12:11:05Z",
+        "coding_index": 60.2,
+        "deal_label": "99% off",
+        "input_cost": 0.435,
+        "free": false,
+        "deal_percent": 99.0,
+        "term": "",
+        "output_cost": 0.87
+      },
+      "note": "Discovered by kes commandcode 2026-10-05: MiMo V2.5 Pro (Xiaomi)",
+      "invoke": "cli:cmd",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "invoke_args": "cmd -p -m xiaomi/mimo-v2.5-pro --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "tier": "cheap",
+      "trial": {
+        "total": 35,
+        "passed": 35,
+        "seconds": 205.3,
+        "at": "2026-10-05T12:11:05Z"
+      },
+      "model_pin": {
+        "default": "xiaomi/mimo-v2.5-pro",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      }
+    },
+    "mimo-v2-5": {
+      "offer": {
+        "checked_at": "2026-10-22T12:11:05Z",
+        "coding_index": 56.8,
+        "deal_label": "98% off",
+        "input_cost": 0.14,
+        "free": false,
+        "deal_percent": 98.0,
+        "term": "",
+        "output_cost": 0.28
+      },
+      "note": "Discovered by kes commandcode 2026-10-05: MiMo V2.5 (Xiaomi)",
+      "invoke": "cli:cmd",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "invoke_args": "cmd -p -m xiaomi/mimo-v2.5 --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "tier": "cheap",
+      "trial": {
+        "total": 35,
+        "passed": 35,
+        "seconds": 140.4,
+        "at": "2026-10-19T12:11:05Z"
+      },
+      "model_pin": {
+        "default": "xiaomi/mimo-v2.5",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      }
+    },
+    "glyph-cluster": {
+      "offer": {
+        "coding_index": null,
+        "deal_percent": 100.0,
+        "checked_at": "2026-10-25T20:59:51Z",
+        "input_cost": 0.0,
+        "term": "while the stealth preview lasts",
+        "free": true,
+        "output_cost": 0.0,
+        "deal_label": "Free"
+      },
+      "tier": "cheap",
+      "trial": {
+        "at": "2026-10-15T21:04:50Z",
+        "total": 35,
+        "seconds": 333.4,
+        "passed": 26
+      },
+      "invoke": "cli:cmd",
+      "note": "Discovered by kes commandcode 2026-10-09: Glyph Cluster (Stealth)",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "invoke_args": "cmd -p -m stealth/glyph-cluster:free --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "model_pin": {
+        "default": "stealth/glyph-cluster:free",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      }
+    },
+    "cat-jam": {
+      "note": "Discovered by kes commandcode 2026-10-15: Cat Jam (Stealth)",
+      "offer": {
+        "input_cost": 0.0,
+        "coding_index": null,
+        "free": true,
+        "checked_at": "2026-10-19T12:11:05Z",
+        "output_cost": 0.0,
+        "deal_label": "Free",
+        "term": "while the stealth preview lasts",
+        "deal_percent": 100.0
+      },
+      "invoke": "cli:cmd",
+      "invoke_args": "cmd -p -m stealth/cat-jam:free --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "tier": "cheap",
+      "trial": {
+        "passed": 26,
+        "at": "2026-10-15T21:04:50Z",
+        "total": 35,
+        "seconds": 33.7
+      },
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-25T20:59:51Z",
+        "window": "none",
+        "source": "atomickestrel",
+        "detail": "Command Code promo ended"
+      },
+      "slice_trial": {
+        "project": "decision-jockey",
+        "date": "2026-10-15",
+        "tasks": 17,
+        "first_try_pass": 14,
+        "needed_retry": [
+          "10 (syntax errors + max-turns 40)",
+          "12 (hit max-turns but files were complete)"
+        ],
+        "issues": [
+          "truncated one test file to 1 of 7 tests while reporting success (verify tests against the plan; restore authoritative tests after every run)",
+          "hits --max-turns 40 on larger tasks; use 60-90",
+          "created .commandcode/ state dir in the repo"
+        ],
+        "verdict": "good bulk builder when tests are pre-written and locked; never trust its report"
+      },
+      "model_pin": {
+        "default": "stealth/cat-jam:free",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      }
+    },
+    "beam": {
+      "note": "Discovered by kes commandcode 2026-10-17: Beam 1.0 (Reflection AI)",
+      "tier": "cheap",
+      "trial": {
+        "at": "2026-10-17T12:11:05Z",
+        "total": 35,
+        "seconds": 27.2,
+        "passed": 35
+      },
+      "invoke_args": "cmd -p -m reflection/beam:free --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "offer": {
+        "coding_index": null,
+        "deal_percent": 100.0,
+        "checked_at": "2026-10-25T20:59:51Z",
+        "input_cost": 0.0,
+        "term": "while capacity lasts",
+        "free": true,
+        "output_cost": 0.0,
+        "deal_label": "Free"
+      },
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "invoke": "cli:cmd",
+      "model_pin": {
+        "default": "reflection/beam:free",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      }
+    },
+    "minimax-m3-1-flash": {
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "note": "Discovered by kes commandcode 2026-10-20: MiniMax M3.1 Flash (MiniMax)",
+      "invoke": "cli:cmd",
+      "tier": "cheap",
+      "invoke_args": "cmd -p -m minimax/minimax-m3.1-flash:free --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "offer": {
+        "term": "for a limited time",
+        "deal_percent": 100.0,
+        "checked_at": "2026-10-21T12:11:05Z",
+        "coding_index": null,
+        "free": true,
+        "output_cost": 0.0,
+        "deal_label": "Free",
+        "input_cost": 0.0
+      },
+      "trial": {
+        "seconds": 129.7,
+        "total": 35,
+        "at": "2026-10-20T12:11:05Z",
+        "passed": 35
+      },
+      "model_pin": {
+        "default": "minimax/minimax-m3.1-flash:free",
+        "source": "backfilled from invoke_args 2026-10-21 (grimdex-d038 revisit)"
+      },
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-25T20:59:51Z",
+        "window": "none",
+        "source": "atomickestrel",
+        "detail": "Command Code promo ended"
+      }
+    },
+    "ornith-1-5-122b": {
+      "offer": {
+        "term": "until 11:00 PM PT on October 21",
+        "deal_percent": 100.0,
+        "checked_at": "2026-10-21T12:11:05Z",
+        "coding_index": null,
+        "free": true,
+        "output_cost": 0.0,
+        "deal_label": "Free",
+        "input_cost": 0.0
+      },
+      "note": "Discovered by kes commandcode 2026-10-21: Ornith 1.5 122B (Ornith)",
+      "roles": [
+        "bulk-code",
+        "draft"
+      ],
+      "invoke_args": "cmd -p -m ornith/ornith-1.5-122b:free --yolo -t --no-session --skip-onboarding --no-auto-update --max-turns 40   (prompt on stdin)",
+      "model_pin": {
+        "default": "ornith/ornith-1.5-122b:free"
+      },
+      "tier": "cheap",
+      "invoke": "cli:cmd",
+      "trial": {
+        "seconds": 309.8,
+        "total": 35,
+        "at": "2026-10-21T12:11:05Z",
+        "passed": 35
+      },
+      "availability": {
+        "state": "out",
+        "as_of": "2026-10-25T20:59:51Z",
+        "window": "none",
+        "source": "atomickestrel",
+        "detail": "Command Code promo ended"
+      }
+    }
+  },
+  "policy": {
+    "default_builder": "space-bunny",
+    "builder_chain": [
+      "space-bunny",
+      "@cc-free-best",
+      "muse-spark",
+      "kimi-k3",
+      "openrouter-glm",
+      "@cc-deal-best",
+      "agy",
+      "kiro",
+      "openrouter-free"
+    ],
+    "build_quality_escalation": "agy",
+    "small_code_may_use": "sonnet",
+    "cheap_offload_may_use": "openrouter-glm",
+    "cheap_oneshot_may_use": "openrouter-free",
+    "review_seat": "grok",
+    "high_level_review_and_planning": "opus",
+    "planning_consensus": {
+      "big_things": [
+        "gemini-flash",
+        "grok",
+        "opus"
+      ],
+      "minor_things": [
+        "opus"
+      ],
+      "note": "BIG planning (new subsystem, cross-cutting change, irreversible call) → run the 3-way panel and synthesize. Minor planning → opus alone, no panel."
+    },
+    "late_window_burn_high_tiers": true,
+    "late_window_note": "On the LAST day of a paid pool's weekly window, spend its high tiers aggressively — unused weekly quota is wasted. Priority order for the burn: code review and planning first (that is where the strong models pay off most), then bulk. Applies to Claude (opus/sonnet subagents) and any other pool with a weekly reset. Pass -LateWindow to Select-FleetWorker; check windows with the quota probe.",
+    "counsel": [
+      "gemini-flash",
+      "grok",
+      "opus"
+    ],
+    "availability_fallback_hours": {
+      "short": 5,
+      "long": 168
+    },
+    "long_horizon_may_use": "kimi-k3",
+    "commandcode": {
+      "plan": "GOAT: $10/month buys $70 of usage; caps $14 per 5 h, $35 per week, $70 per month (each resets on its own)",
+      "priority": [
+        "free (cloaked/stealth first: space-bunny is the default builder)",
+        "near-free quality: muse-spark (Contributor tier, best trial result) for harder or quality-sensitive builds",
+        "deals (MiniMax M3 named by the operator)",
+        "GOAT-paid models (kimi-k3 for long-horizon / 1M context), spending the $70 well"
+      ],
+      "data_rule": "private-repo code OK; PII never (the operator 2026-10-01)",
+      "promo_rows": "enabled while the promotion is live; disabled when it ends (the operator 2026-10-01). The AK daily Command Code check flips them.",
+      "daily_check": "https://commandcode.ai/docs/plans/goat (Free + Deals). See grimdex-d053.",
+      "jev": "Jev (typesafe/jev) ALWAYS through the operators direct typesafe account (AK row typesafe-jev), never Command Code or OpenRouter, unless the operator says otherwise (2026-10-01)."
+    },
+    "build_quality_escalation_cc": "muse-spark",
+    "code_exclude": [
+      "(?i)ling"
+    ],
+    "builder_chain_note": "the operator 2026-10-05: Space Bunny is probably top while it is free; Muse Spark is good; Kimi K3 is really good; OpenRouter GLM is great. Don\t use Ling for programming (code_exclude, a pattern so future Ling models are caught too).",
+    "review_note": "the operator 2026-10-06: Kimi K3 takes review while Grok is out of tokens. Grok (listed first, same tier) wins again automatically once its availability is back."
+  }
+}

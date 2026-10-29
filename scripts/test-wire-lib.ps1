@@ -100,7 +100,8 @@ Assert 'missing project dir throws' $threw
 $ag = Join-Path $tempRoot "grimdex-agents-$(Get-Random)"
 $gRoot = Join-Path $ag 'grimdex'
 $dev = Join-Path $ag 'dev'
-New-Item -ItemType Directory -Force -Path $gRoot, $dev | Out-Null
+New-Item -ItemType Directory -Force -Path $gRoot, $dev, (Join-Path $gRoot 'config') | Out-Null
+[IO.File]::WriteAllText((Join-Path $gRoot 'config' 'publish-scrub.json'), '{ "replacements": [], "deny": [], "allow": [] }')
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 function Set-Laws($text) {
     [IO.File]::WriteAllText((Join-Path $gRoot 'GRIMDEX.md'), "# Grimdex`n`nintro`n`n<!-- grimdex:laws:start -->`n$text`n<!-- grimdex:laws:end -->`n`n## Layout`n", $utf8)
@@ -125,6 +126,15 @@ $noMark = Join-Path $ag 'nomark'; New-Item -ItemType Directory -Force -Path $noM
 Set-Content (Join-Path $noMark 'GRIMDEX.md') '# no markers'
 $threw = $false; try { Get-GrimdexLawsSection -GrimdexRoot $noMark | Out-Null } catch { $threw = $true }
 Assert 'laws: missing markers throws' $threw
+
+$missingScrub = Join-Path $ag 'missing-scrub'
+New-Item -ItemType Directory -Force -Path $missingScrub | Out-Null
+[IO.File]::WriteAllText((Join-Path $missingScrub 'GRIMDEX.md'), "<!-- grimdex:laws:start -->`n## Law`n<!-- grimdex:laws:end -->")
+$block = Get-GrimdexLawsBlock -GrimdexRoot $missingScrub -ProjectId p -WarningAction SilentlyContinue
+Assert 'laws block: missing scrub config still stamps (fresh public install)' ($block -match '## Law')
+[IO.File]::WriteAllText((Join-Path $missingScrub 'GRIMDEX.md'), "<!-- grimdex:laws:start -->`n## Law`nmail someone@gmail.com`n<!-- grimdex:laws:end -->")  # grimdex:scrub-ok:email
+$threw = $false; try { Get-GrimdexLawsBlock -GrimdexRoot $missingScrub -ProjectId p -WarningAction SilentlyContinue | Out-Null } catch { $threw = $true }
+Assert 'laws block: missing scrub config still refuses built-in shapes' $threw
 
 Set-Laws "## The law`n`nmail me at someone@gmail.com"  # grimdex:scrub-ok:email
 $threw = $false; try { Get-GrimdexLawsBlock -GrimdexRoot $gRoot -ProjectId p | Out-Null } catch { $threw = $true }
@@ -177,16 +187,20 @@ Set-Content (Join-Path $plain 'CLAUDE.md') '# not wired'
 Install-GrimdexPointers -ProjectDir $p2 -GrimdexPath $gRoot -Mode agents | Out-Null
 $found = @(Find-GrimdexWiredProjects -DevRoot $dev | ForEach-Object { Split-Path $_ -Leaf } | Sort-Object)
 Assert 'discovery: wired projects only' (($found -join ',') -eq 'p1,p2')
+Assert 'discovery: exclude list skips a wired project' ((@(Find-GrimdexWiredProjects -DevRoot $dev -Exclude 'p2' | ForEach-Object { Split-Path $_ -Leaf }) -join ',') -eq 'p1')
 [IO.File]::WriteAllText((Join-Path $dev 'AGENTS.md'), "# Dev notes`n", $utf8)
 $t = Install-GrimdexTopLevel -DevRoot $dev -GrimdexRoot $gRoot
 $top = [IO.File]::ReadAllText((Join-Path $dev 'AGENTS.md'))
 Assert 'top level: stamped, own notes kept' ($t.action -eq 'appended' -and $top.StartsWith('# Dev notes') -and $top.Contains('main level'))
 Assert 'top level: idempotent' ((Install-GrimdexTopLevel -DevRoot $dev -GrimdexRoot $gRoot).action -eq 'unchanged')
 
-# the live GRIMDEX.md law must stamp cleanly (public-safe)
+# The checked-in law is clean against built-in shapes. Full operator-specific safety now
+# requires the intentionally-gitignored private scrub config and is tested above as fail-closed.
 $liveRoot = Split-Path $PSScriptRoot -Parent
-$threw = $false; try { Get-GrimdexLawsBlock -GrimdexRoot $liveRoot -ProjectId x | Out-Null } catch { $threw = $true; Write-Host $_ }
-Assert 'live GRIMDEX.md law is public-safe' (-not $threw)
+. (Join-Path $PSScriptRoot 'scrub-lib.ps1')
+$emptyScrub = [pscustomobject]@{ replacements = @(); deny = @(); allow = @() }
+$liveLeaks = @(Find-GrimdexLeaks -Text (Get-GrimdexLawsSection -GrimdexRoot $liveRoot) -Config $emptyScrub -Path 'GRIMDEX.md')
+Assert 'live GRIMDEX.md law has no built-in personal-data shapes' ($liveLeaks.Count -eq 0)
 
 # malformed markers: refused, nothing written (reviewer 2026-09-28)
 $mk = Join-Path $dev 'malformed'; New-Item -ItemType Directory -Force -Path $mk | Out-Null
@@ -203,6 +217,42 @@ Assert 'markers: two blocks refused'          ($threw -and [IO.File]::ReadAllTex
 $threw = $false; try { Set-GrimdexBlock -Content "<!-- grimdex:end -->`n<!-- grimdex:start -->" -Stanza 'x' | Out-Null } catch { $threw = $true }
 Assert 'markers: reversed pair refused'       $threw
 Remove-Item -Recurse -Force $mk
+
+if (-not $IsWindows) {
+    $symlinkProject = Join-Path $dev 'symlink-project'
+    $outsideGithub = Join-Path $tmp 'outside-github'
+    New-Item -ItemType Directory -Force -Path $symlinkProject, $outsideGithub | Out-Null
+    New-Item -ItemType SymbolicLink -Path (Join-Path $symlinkProject '.github') -Target $outsideGithub | Out-Null
+    $threw = $false
+    try { Install-GrimdexPointers -ProjectDir $symlinkProject -GrimdexPath $gRoot -ProjectId 'symlink-project' | Out-Null } catch { $threw = $true }
+    Assert 'wire refuses a symlinked target directory' $threw
+    Assert 'wire symlink validation is all-or-nothing' (-not (Test-Path (Join-Path $symlinkProject 'CLAUDE.md')))
+    Assert 'wire wrote nothing through the symlink' (-not (Test-Path (Join-Path $outsideGithub 'copilot-instructions.md')))
+    Remove-Item -Recurse -Force $symlinkProject, $outsideGithub
+
+    # symlinked CLAUDE.md -> sentinel outside the project (existing, dangling) and a dangling .github
+    foreach ($variant in 'file', 'dangling-file', 'dangling-dir') {
+        $proj = Join-Path $dev "link-$variant"
+        $outside = Join-Path $tmp "outside-$variant"
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        $sentinel = Join-Path $outside 'sentinel.md'
+        if ($variant -ne 'dangling-dir') { New-Item -ItemType Directory -Force -Path $outside | Out-Null }
+        if ($variant -eq 'file') { [IO.File]::WriteAllText($sentinel, "SENTINEL`n", $utf8) }
+        if ($variant -eq 'dangling-dir') { New-Item -ItemType SymbolicLink -Path (Join-Path $proj '.github') -Target $outside | Out-Null }
+        else { New-Item -ItemType SymbolicLink -Path (Join-Path $proj 'CLAUDE.md') -Target $sentinel | Out-Null }
+        foreach ($m in 'classic', 'agents') {
+            $threw = $false
+            try { Install-GrimdexPointers -ProjectDir $proj -GrimdexPath $gRoot -ProjectId "link-$variant" -Mode $m | Out-Null } catch { $threw = $true }
+            Assert "wire ($variant, $m) refuses the symlink" $threw
+        }
+        Assert "wire ($variant) wrote nothing outside the project" (-not (Test-Path -LiteralPath $outside) -or (@(Get-ChildItem -LiteralPath $outside -Force).Count -le 1))
+        if ($variant -eq 'file') { Assert 'wire sentinel unchanged' ([IO.File]::ReadAllText($sentinel) -eq "SENTINEL`n") }
+        else { Assert "wire ($variant) dangling target not created" (-not (Test-Path -LiteralPath $sentinel) -and -not (Test-Path -LiteralPath (Join-Path $outside 'copilot-instructions.md'))) }
+        Assert "wire ($variant) all-or-nothing" (-not (Test-Path -LiteralPath (Join-Path $proj 'AGENTS.md')))
+        Remove-Item -Recurse -Force $proj
+        if (Test-Path -LiteralPath $outside) { Remove-Item -Recurse -Force $outside }
+    }
+}
 $rwErr = Join-Path $dev 'broken'; New-Item -ItemType Directory -Force -Path $rwErr | Out-Null
 [IO.File]::WriteAllText((Join-Path $rwErr 'CLAUDE.md'), $orphan, $utf8)
 $rw = @(Invoke-GrimdexRewire -GrimdexRoot $gRoot -Mode agents -DevRoot $dev)
@@ -240,6 +290,10 @@ Assert 'mode: default classic'       ($m.mode -eq 'classic')
 Assert 'mode: default dev_root is the parent' ($m.dev_root -eq (Split-Path (Resolve-Path $gRoot).Path -Parent))
 $m = Set-GrimdexMode -GrimdexRoot $gRoot -Mode agents -DevRoot (Join-Path $HOME 'SomeDev')
 Assert 'mode: set/get round-trips'   ($m.mode -eq 'agents' -and $m.dev_root -eq (Join-Path $HOME 'SomeDev'))
+[IO.File]::WriteAllText((Join-Path $gRoot 'config' 'grimdex-mode.json'), '{ "mode": "agents", "dev_root": "~/SomeDev", "exclude": ["OldRepo"] }', $utf8)
+Assert 'mode: exclude read'          ((Get-GrimdexMode -GrimdexRoot $gRoot).exclude -contains 'OldRepo')
+$m = Set-GrimdexMode -GrimdexRoot $gRoot -Mode agents -DevRoot (Join-Path $HOME 'SomeDev')
+Assert 'mode: set keeps exclude'     ($m.exclude -contains 'OldRepo')
 Assert 'mode: home stored as ~'      ((Get-Content (Join-Path $gRoot 'config' 'grimdex-mode.json') -Raw).Contains('"~/SomeDev"'))
 Set-Content (Join-Path $gRoot 'config' 'grimdex-mode.json') '{ "mode": "fancy" }'
 $threw = $false; try { Get-GrimdexMode -GrimdexRoot $gRoot | Out-Null } catch { $threw = $true }

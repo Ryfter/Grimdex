@@ -69,6 +69,17 @@ $missingTarget = New-RuleSyncProposal -GrimdexRoot $root -Target 'universal/clau
     -Content 'body' -Machine 'TABLET' -Timestamp '2026-06-12T22:00:00-06:00'
 Assert 'absent target rejected' (-not (Test-RuleSyncProposal -GrimdexRoot $root -Path $missingTarget).valid)
 
+$outsideTarget = Join-Path $root 'outside.md'
+Set-Content $outsideTarget -Value 'outside'
+$traversalTarget = New-RuleSyncProposal -GrimdexRoot $root `
+    -Target 'universal/claude-rules/../../outside.md' -Content 'overwrite' `
+    -Machine 'ESCAPE' -Timestamp '2026-06-12T22:00:00-06:00'
+Assert 'traversal-shaped rule target rejected' (-not (Test-RuleSyncProposal -GrimdexRoot $root -Path $traversalTarget).valid)
+
+$threw = $false
+try { Get-RuleSyncProposalPath -GrimdexRoot $root -Machine '../escape' | Out-Null } catch { $threw = $true }
+Assert 'machine name cannot escape the promotions inbox' $threw
+
 $empty = New-RuleSyncProposal -GrimdexRoot $root -Target 'GRIMDEX.md' `
     -Content '   ' -Machine 'DESK' -Timestamp '2026-06-12T22:00:00-06:00'
 Assert 'empty content rejected' (-not (Test-RuleSyncProposal -GrimdexRoot $root -Path $empty).valid)
@@ -80,9 +91,66 @@ Assert 'no-frontmatter rejected, path preserved' (-not $nf.valid -and $nf.path -
 
 # ---------- pending enumeration ----------
 $pending = @(Get-PendingRuleSyncProposals -GrimdexRoot $root)
-Assert 'all *.sync.md enumerated' ($pending.Count -eq 5)
+Assert 'all *.sync.md enumerated' ($pending.Count -eq 6)
 Assert 'mix of valid + invalid' (@($pending | Where-Object valid).Count -eq 1)
 Get-ChildItem (Join-Path $root 'universal' 'promotions') -Filter '*.sync.md' | Remove-Item
+
+# ---------- target traversal / symlink breakout (regression) ----------
+$rulesDir = Join-Path $root 'universal' 'claude-rules'
+Set-Content (Join-Path $rulesDir 'a.md') -Value 'rule a'
+$secretIn  = Join-Path $root 'secret.md'
+$outDir    = Join-Path ([IO.Path]::GetTempPath()) "grimdex-sync-out-$(Get-Random)"
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$secretOut = Join-Path $outDir 'secret.md'
+Set-Content $secretIn -Value 'inside-root secret'
+Set-Content $secretOut -Value 'outside-root secret'
+$bad = @(
+    'universal/claude-rules/../../secret.md', 'universal/claude-rules/../../../x/secret.md',
+    'universal/claude-rules/./a.md', './GRIMDEX.md', '../GRIMDEX.md', '/etc/hosts', $secretOut,
+    'universal\claude-rules\..\..\secret.md', 'universal\claude-rules\..\GRIMDEX.md',
+    'C:\Windows\win.ini', 'universal/claude-rules/', 'universal/claude-rules/sub/a.md'
+)
+foreach ($t in $bad) {
+    Assert "target rejected: $t" (-not (Test-RuleSyncTargetAllowed -GrimdexRoot $root -Target $t))
+}
+Assert 'normal rule target still allowed' (Test-RuleSyncTargetAllowed -GrimdexRoot $root -Target 'universal/claude-rules/a.md')
+Assert 'GRIMDEX.md still allowed' (Test-RuleSyncTargetAllowed -GrimdexRoot $root -Target 'GRIMDEX.md')
+if (-not $IsWindows) {
+    # symlinked rule file -> outside
+    New-Item -ItemType SymbolicLink -Path (Join-Path $rulesDir 'link.md') -Target $secretOut | Out-Null
+    Assert 'symlinked rule file rejected' (-not (Test-RuleSyncTargetAllowed -GrimdexRoot $root -Target 'universal/claude-rules/link.md'))
+    # symlinked rules dir -> outside
+    $root2 = Join-Path ([IO.Path]::GetTempPath()) "grimdex-sync2-$(Get-Random)"
+    New-Item -ItemType Directory -Force -Path (Join-Path $root2 'universal') | Out-Null
+    Set-Content (Join-Path $root2 'GRIMDEX.md') -Value '# Law'
+    Set-Content (Join-Path $outDir 'b.md') -Value 'outside rule'
+    New-Item -ItemType SymbolicLink -Path (Join-Path $root2 'universal' 'claude-rules') -Target $outDir | Out-Null
+    Assert 'symlinked claude-rules dir rejected' (-not (Test-RuleSyncTargetAllowed -GrimdexRoot $root2 -Target 'universal/claude-rules/b.md'))
+    # symlinked universal dir -> outside
+    $root3 = Join-Path ([IO.Path]::GetTempPath()) "grimdex-sync3-$(Get-Random)"
+    New-Item -ItemType Directory -Force -Path $root3 | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $outDir 'claude-rules') | Out-Null
+    Set-Content (Join-Path $outDir 'claude-rules' 'c.md') -Value 'outside rule c'
+    New-Item -ItemType SymbolicLink -Path (Join-Path $root3 'universal') -Target $outDir | Out-Null
+    Assert 'symlinked universal dir rejected' (-not (Test-RuleSyncTargetAllowed -GrimdexRoot $root3 -Target 'universal/claude-rules/c.md'))
+    # write-time recheck: valid proposal, then the target is swapped for a symlink before approve
+    $swap = New-RuleSyncProposal -GrimdexRoot $root -Target 'universal/claude-rules/a.md' `
+        -Content 'attacker body' -Machine 'SWAP' -Timestamp '2026-06-12T22:00:00-06:00'
+    Remove-Item (Join-Path $rulesDir 'a.md')
+    New-Item -ItemType SymbolicLink -Path (Join-Path $rulesDir 'a.md') -Target $secretOut | Out-Null
+    $threw = $false
+    try { Approve-RuleSyncProposal -GrimdexRoot $root -Path $swap | Out-Null } catch { $threw = $true }
+    Assert 'approve refuses a target swapped for a symlink' $threw
+    Assert 'approve left the outside file untouched' ((Get-Content $secretOut -Raw).Trim() -eq 'outside-root secret')
+    Remove-Item (Join-Path $rulesDir 'a.md'), (Join-Path $rulesDir 'link.md'), $swap
+    Set-Content (Join-Path $rulesDir 'a.md') -Value 'rule a'
+    # cleanup: drop the links first so nothing recurses outside the temp fixtures
+    (Get-Item (Join-Path $root2 'universal' 'claude-rules') -Force).Delete()
+    (Get-Item (Join-Path $root3 'universal') -Force).Delete()
+    Remove-Item -Recurse $root2, $root3
+}
+Remove-Item -Recurse $outDir
+Assert 'inside-root secret unchanged' ((Get-Content $secretIn -Raw).Trim() -eq 'inside-root secret')
 
 # ---------- approve ----------
 Set-Content (Join-Path $root 'universal' 'claude-rules' 'context7.md') -Value 'original rule'

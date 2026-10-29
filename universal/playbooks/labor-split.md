@@ -1,10 +1,10 @@
 # Labor split & routing playbook
 
-*This playbook (the method) ships in the Grimdex public engine. The actual policy (`config/fleet.json`) is private instance data — it lives in your own Grimdex instance and is never committed to the public engine.*
+*This playbook (the method) ships in the Grimdex public engine. The actual policy (`config/models.json`) is private instance data — it lives in your own Grimdex instance and is never committed to the public engine.*
 
 ## 1. When to read this
 
-Read this playbook before dispatching non-trivial coding work, **only when `config/fleet.json` exists** in the Grimdex root.
+Read this playbook before dispatching non-trivial coding work, **only when `config/models.json` exists** in the Grimdex root.
 
 If the file is absent, the feature is dormant — work normally with a single model. No routing needed.
 
@@ -79,6 +79,8 @@ In all other cases, routing is automatic.
 ## 6. Gates
 
 A gated worker has an optional `gate` property in the policy. It represents a special constraint or a specialist role that should not be invoked casually.
+
+**`gate` is a restriction, never a description.** It must start with `explicit-call-only`, optionally followed by `; <condition>` (e.g. `explicit-call-only; skip-if-weekly>50%`). Any worker carrying a gate drops out of automatic selection. To *describe* a worker's quota pool or billing ("separate quota pool (Kiro credits)", "$0 free router"), use the informational **`pool`** field — it never filters. `Get-GrimdexFleet` warns, and `test-fleet-lib` fails, on a gate that is not a restriction (grimdex-d051: descriptive gates once silently removed every bulk-code worker).
 
 **Never invoke a gated worker unless the user explicitly requests it by name.**
 

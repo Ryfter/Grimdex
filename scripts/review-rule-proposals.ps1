@@ -27,7 +27,7 @@ foreach ($r in $pending) {
         continue
     }
     $p = $r.proposal
-    $abs = Join-Path $GrimdexRoot ($p.target -replace '/', '\')
+    $abs = Join-Path $GrimdexRoot ($p.target -replace '/', [IO.Path]::DirectorySeparatorChar)
     Write-Host "`n=== $($p.target)  (from $($p.machine), $($p.timestamp)) ===" -ForegroundColor Cyan
     if ($p.note) { Write-Host "note: $($p.note)" }
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("grimdex-review-{0}.md" -f [IO.Path]::GetRandomFileName())

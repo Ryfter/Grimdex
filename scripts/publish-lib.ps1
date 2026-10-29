@@ -30,6 +30,34 @@ function Test-GrimdexPathMatch {
     return $false
 }
 
+function Resolve-GrimdexContainedPath {
+    # Resolve a repo-relative path without allowing rooted paths, .. escapes, or symlinked
+    # components below the declared root. Publish is a cross-repo writer; following a link in
+    # either checkout could read or overwrite a file outside the two repos.
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$RelativePath
+    )
+    if ([IO.Path]::IsPathRooted($RelativePath)) { throw "rooted path is not allowed: $RelativePath" }
+    $rootFull = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Root).ProviderPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $candidate = [IO.Path]::GetFullPath((Join-Path $rootFull $RelativePath))
+    $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    $prefix = $rootFull + [IO.Path]::DirectorySeparatorChar
+    if (-not $candidate.StartsWith($prefix, $comparison)) { throw "path escapes root: $RelativePath" }
+
+    $cursor = $rootFull
+    foreach ($part in $candidate.Substring($prefix.Length).Split([IO.Path]::DirectorySeparatorChar, [StringSplitOptions]::RemoveEmptyEntries)) {
+        $cursor = Join-Path $cursor $part
+        if (Test-Path -LiteralPath $cursor) {
+            $item = Get-Item -LiteralPath $cursor -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "symlink/reparse component is not allowed: $RelativePath"
+            }
+        }
+    }
+    return $candidate
+}
+
 function Read-GrimdexText {
     param([string]$Path)
     [IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path).ProviderPath, [Text.UTF8Encoding]::new($false))
@@ -46,7 +74,9 @@ function Get-GrimdexGitBytes {
     $proc = [System.Diagnostics.Process]::Start($psi)
     $ms = [IO.MemoryStream]::new()
     $proc.StandardOutput.BaseStream.CopyTo($ms)
+    $err = $proc.StandardError.ReadToEnd()
     $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0) { throw "git cat-file failed for '$Spec': $err" }
     return , $ms.ToArray()
 }
 
@@ -63,12 +93,13 @@ function Find-GrimdexTreeLeaks {
         [string]$Rev = 'HEAD'
     )
     $files = if ($Source -eq 'Head') { @(git -C $Root ls-tree -r --name-only $Rev 2>$null) } else { @(git -C $Root ls-files 2>$null) }
+    if ($LASTEXITCODE -ne 0) { throw "git file enumeration failed in $Root (source=$Source, rev=$Rev)" }
     foreach ($f in $files) {
         if ($f -in $Exclude) { continue }
         if ($Source -eq 'Head') {
             $bytes = Get-GrimdexGitBytes -Root $Root -Spec "$($Rev):$f"
         } else {
-            $disk = Join-Path $Root $f
+            $disk = Resolve-GrimdexContainedPath -Root $Root -RelativePath $f
             if (-not (Test-Path -LiteralPath $disk -PathType Leaf)) { continue }
             $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $disk).ProviderPath)
         }
@@ -92,15 +123,22 @@ function Find-GrimdexPushLeaks {
         if ($parts.Count -lt 4) { continue }
         $localSha = $parts[1]; $remoteSha = $parts[3]
         if ($localSha -match '^0+$') { continue }   # deleting a remote ref publishes nothing
-        $commits = if ($remoteSha -match '^0+$') { @(git -C $Root rev-list $localSha --not --remotes 2>$null) }
+        # A new ref may be going to a public remote while the same commits are reachable from
+        # a private remote. Excluding every local remote would then skip leaked-and-deleted
+        # history. First publication pays the cost of scanning the full reachable history.
+        $commits = if ($remoteSha -match '^0+$') { @(git -C $Root rev-list $localSha 2>$null) }
                    else { @(git -C $Root rev-list "$remoteSha..$localSha" 2>$null) }
+        if ($LASTEXITCODE -ne 0) { throw "git rev-list failed for pushed ref: $ln" }
         foreach ($c in $commits) {
             $short = $c.Substring(0, [Math]::Min(8, $c.Length))
             $msg = (git -C $Root log -1 --format=%B $c 2>$null) -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw "git log failed for pushed commit $c" }
             Find-GrimdexLeaks -Text $msg -Config $Config -Path "commit $short (message)"
             $current = $null
             $added = [ordered]@{}
-            foreach ($d in @(git -C $Root show --format= --no-color --unified=0 $c 2>$null)) {
+            $diff = @(git -C $Root show --format= --no-color --unified=0 $c 2>$null)
+            if ($LASTEXITCODE -ne 0) { throw "git show failed for pushed commit $c" }
+            foreach ($d in $diff) {
                 if ($d -match '^\+\+\+ (?:b/)?(.*)$') { $current = $Matches[1]; continue }
                 if ($d.StartsWith('+') -and $current) {
                     if (-not $added.Contains($current)) { $added[$current] = [System.Collections.Generic.List[string]]::new() }
@@ -134,13 +172,21 @@ function Get-GrimdexPublishPlan {
     $items = [System.Collections.Generic.List[object]]::new()
     $leaks = [System.Collections.Generic.List[object]]::new()
     foreach ($pr in $pairs) {
-        $srcPath = Join-Path $GrimdexRoot $pr.src
         $isExample = $Manifest.examples.Contains($pr.src)
         if (-not $isExample -and (Test-GrimdexPathMatch -Path $pr.src -Patterns $Manifest.never)) {
             $items.Add([pscustomobject]@{ src = $pr.src; dest = $pr.dest; action = 'refused'; content = $null; note = 'listed in never' }); continue
         }
         if (Test-GrimdexPathMatch -Path $pr.dest -Patterns $Manifest.never) {
             $items.Add([pscustomobject]@{ src = $pr.src; dest = $pr.dest; action = 'refused'; content = $null; note = 'destination listed in never' }); continue
+        }
+        if ($pr.src -notin $tracked) {
+            $items.Add([pscustomobject]@{ src = $pr.src; dest = $pr.dest; action = 'refused'; content = $null; note = 'source is not tracked' }); continue
+        }
+        try {
+            $srcPath = Resolve-GrimdexContainedPath -Root $GrimdexRoot -RelativePath $pr.src
+            $destPath = Resolve-GrimdexContainedPath -Root $EngineRoot -RelativePath $pr.dest
+        } catch {
+            $items.Add([pscustomobject]@{ src = $pr.src; dest = $pr.dest; action = 'refused'; content = $null; note = $_.Exception.Message }); continue
         }
         if (-not (Test-Path -LiteralPath $srcPath -PathType Leaf)) {
             $items.Add([pscustomobject]@{ src = $pr.src; dest = $pr.dest; action = 'refused'; content = $null; note = 'source missing' }); continue
@@ -150,7 +196,6 @@ function Get-GrimdexPublishPlan {
         }
         $content = Invoke-GrimdexScrub -Text (Read-GrimdexText $srcPath) -Config $Config
         foreach ($l in @(Find-GrimdexLeaks -Text $content -Config $Config -Path $pr.dest)) { $leaks.Add($l) }
-        $destPath = Join-Path $EngineRoot $pr.dest
         $action = if (-not (Test-Path -LiteralPath $destPath)) { 'new' }
                   elseif ((Read-GrimdexText $destPath) -ceq $content) { 'unchanged' }
                   else { 'changed' }
@@ -170,11 +215,19 @@ function Invoke-GrimdexPublish {
     param([Parameter(Mandatory)]$Plan, [Parameter(Mandatory)][string]$EngineRoot)
     $utf8 = [Text.UTF8Encoding]::new($false)
     foreach ($it in @($Plan.items | Where-Object { $_.action -in 'new', 'changed' })) {
-        $dest = Join-Path $EngineRoot $it.dest
+        $dest = Resolve-GrimdexContainedPath -Root $EngineRoot -RelativePath $it.dest
         New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
         [IO.File]::WriteAllText($dest, $it.content, $utf8)
         $it
     }
+}
+
+function ConvertTo-GrimdexShSingleQuoted {
+    # POSIX-shell single-quote escaping: close the quote, emit one quoted apostrophe,
+    # then reopen it. Hook paths are data, never shell syntax.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Value)
+    $apostrophe = [string]::Concat("'", '"', "'", '"', "'")
+    return "'" + $Value.Replace("'", $apostrophe) + "'"
 }
 
 function Install-GrimdexEnginePrePush {
@@ -185,14 +238,23 @@ function Install-GrimdexEnginePrePush {
         [Parameter(Mandatory)][string]$GrimdexRoot,
         [string]$ScriptRoot = $PSScriptRoot
     )
-    $hook = Join-Path $EngineRoot '.git' 'hooks' 'pre-push'
+    $hook = Resolve-GrimdexContainedPath -Root $EngineRoot -RelativePath '.git/hooks/pre-push'
+    if (Test-Path -LiteralPath $hook) {
+        $existing = [IO.File]::ReadAllText($hook)
+        if (-not $existing.Contains('# Grimdex publish gate')) {
+            throw "A non-Grimdex pre-push hook already exists; refusing to overwrite it: $hook"
+        }
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path $hook -Parent) | Out-Null
     $publish = Join-Path $ScriptRoot 'publish-engine.ps1'
+    $publishArg = ConvertTo-GrimdexShSingleQuoted $publish
+    $engineArg = ConvertTo-GrimdexShSingleQuoted $EngineRoot
+    $grimdexArg = ConvertTo-GrimdexShSingleQuoted $GrimdexRoot
     $body = @(
         '#!/bin/sh',
         '# Grimdex publish gate (installed by publish-engine.ps1 -InstallHook). Blocks a push',
         '# when the engine tree holds anything personal. Local only; never committed.',
-        "exec pwsh -NoProfile -File '$publish' -EngineRoot '$EngineRoot' -GrimdexRoot '$GrimdexRoot' -ScanOnly -PrePush"
+        "exec pwsh -NoProfile -File $publishArg -EngineRoot $engineArg -GrimdexRoot $grimdexArg -ScanOnly -PrePush"
     ) -join "`n"
     [IO.File]::WriteAllText($hook, $body + "`n", [Text.UTF8Encoding]::new($false))
     if (-not $IsWindows) { chmod +x $hook }

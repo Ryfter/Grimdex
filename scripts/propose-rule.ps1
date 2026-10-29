@@ -16,8 +16,10 @@ $ErrorActionPreference = 'Stop'
 if ((Get-GrimdexRole -GrimdexRoot $GrimdexRoot) -eq 'hub') {
     throw "This is the hub — edit the rule directly; proposals are for spokes."
 }
+if (-not (Test-RuleSyncTargetAllowed -GrimdexRoot $GrimdexRoot -Target $Target)) {
+    throw "Target is not an existing direct rule file or GRIMDEX.md: $Target"
+}
 $abs = Join-Path $GrimdexRoot ($Target -replace '/', [IO.Path]::DirectorySeparatorChar)
-if (-not (Test-Path $abs)) { throw "Target does not exist: $Target" }
 
 $thisMachine = Get-GrimdexHostName
 

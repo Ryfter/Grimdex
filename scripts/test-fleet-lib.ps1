@@ -10,7 +10,7 @@ function Assert($label, $cond) {
 function New-FleetFixture($json) {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ("fleet_" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $root 'config') -Force | Out-Null
-    if ($null -ne $json) { Set-Content -LiteralPath (Join-Path (Join-Path $root 'config') 'fleet.json') -Value $json -Encoding UTF8 }
+    if ($null -ne $json) { Set-Content -LiteralPath (Join-Path (Join-Path $root 'config') 'models.json') -Value $json -Encoding UTF8 }
     return $root
 }
 
@@ -22,9 +22,9 @@ $valid = @'
 Write-Host "Get-GrimdexFleet"
 $r1 = New-FleetFixture $valid
 $fleet = Get-GrimdexFleet -GrimdexRoot $r1
-Assert "parses valid fleet.json" ($null -ne $fleet -and $fleet.policy.default_builder -eq 'grok')
+Assert "parses valid models.json" ($null -ne $fleet -and $fleet.policy.default_builder -eq 'grok')
 
-$r2 = New-FleetFixture $null   # dir exists, no fleet.json
+$r2 = New-FleetFixture $null   # dir exists, no models.json
 Assert "absent file returns `$null" ($null -eq (Get-GrimdexFleet -GrimdexRoot $r2))
 
 $r3 = New-FleetFixture '{ this is not json'
@@ -93,10 +93,106 @@ $fa = $askJson | ConvertFrom-Json
 $ask = Select-FleetWorker -Fleet $fa -TaskType 'docs'
 Assert "unknown availability -> NeedsAsk" ($ask.Name -eq 'mystery' -and $ask.NeedsAsk -eq $true)
 
+Write-Host "builder chain (bulk-code, no hard-coded default builder)"
+# One Command Code pool (free + deal rows), then the other providers. c-a/c-b are free and
+# trialled, c-deal is priced, c-laguna never passed its trial.
+$chainJson = @'
+{
+  "workers": {
+    "c-a":      { "invoke": "cli:cmd", "roles": ["bulk-code"], "tier": "cheap",
+                  "offer": { "free": true }, "trial": { "passed": 35, "total": 35, "seconds": 42 },
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "c-b":      { "invoke": "cli:cmd", "roles": ["bulk-code"], "tier": "cheap",
+                  "offer": { "free": true }, "trial": { "passed": 34, "total": 35, "seconds": 400 },
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "c-deal":   { "invoke": "cli:cmd", "roles": ["bulk-code"], "tier": "cheap",
+                  "offer": { "free": false }, "trial": { "passed": 35, "total": 35, "seconds": 83 },
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "c-laguna": { "invoke": "cli:cmd", "roles": ["bulk-code"], "tier": "cheap",
+                  "offer": { "free": true }, "trial": { "passed": 0, "total": 35, "seconds": 284 },
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "kimi-k3":  { "invoke": "cli:cmd", "roles": ["bulk-code"], "tier": "build",
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "glm":      { "invoke": "cli:bash", "roles": ["bulk-code"], "tier": "cheap",
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "agy":      { "invoke": "cli:agy", "roles": ["bulk-code"], "tier": "mid",
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } },
+    "kiro":     { "invoke": "cli:kiro-cli", "roles": ["bulk-code"], "tier": "build",
+                  "availability": { "state": "available", "as_of": "2026-10-01T12:00:00Z", "window": "none" } }
+  },
+  "policy": { "default_builder": "c-a", "builder_chain": [ "@cc-free-best", "@cc-deal-best", "kimi-k3", "glm", "agy", "kiro", "ghost" ] }
+}
+'@
+$cf = $chainJson | ConvertFrom-Json -DateKind String
+$now = [datetimeoffset]::Parse('2026-10-01T12:00:00Z')
+
+# Best free model wins, and the reason names the chain entry that chose it.
+$bc = Select-FleetWorker -Fleet $cf -TaskType 'bulk-code' -Now $now
+Assert "bulk-code -> best free model" ($bc.Name -eq 'c-a')
+Assert "reason names the chain entry"  ($bc.Reason -eq 'bulk-code -> c-a (builder chain: @cc-free-best)')
+
+# Next in line: the best free model is out -> the next free one takes over.
+$out = $cf.workers.'c-a'.availability; $cf.workers.'c-a'.availability.state = 'out'
+$bc2 = Select-FleetWorker -Fleet $cf -TaskType 'bulk-code' -Now $now
+Assert "best free out -> next free wins" ($bc2.Name -eq 'c-b' -and $bc2.Reason -like '*(builder chain: @cc-free-best)*')
+$cf.workers.'c-b'.availability.state = 'out'
+
+# Every free and deal model out -> the first named provider in the chain.
+$cf.workers.'c-deal'.availability.state = 'out'
+$bc3 = Select-FleetWorker -Fleet $cf -TaskType 'bulk-code' -Now $now
+Assert "all Command Code out -> kimi-k3"  ($bc3.Name -eq 'kimi-k3' -and $bc3.Reason -like '*(builder chain: kimi-k3)*')
+$cf.workers.'kimi-k3'.availability.state = 'out'
+$bc4 = Select-FleetWorker -Fleet $cf -TaskType 'bulk-code' -Now $now
+Assert "kimi out -> the next named worker" ($bc4.Name -eq 'glm')
+
+# A failed trial is never auto-picked, even when it tops its price tier.
+Assert "failed trial never auto-picked" (-not (@(Resolve-GrimdexBuilderChain -Models $cf -Now $now) -contains 'c-laguna'))
+$cf.workers.'c-laguna'.availability.state = 'out'   # the only way it could surface
+Assert "failed trial out of the chain"  (@(Resolve-GrimdexBuilderChain -Models $cf -Now $now) -notcontains 'c-laguna')
+$onlyFailed = [pscustomobject]@{ workers = [pscustomobject]@{
+        'c-laguna' = [pscustomobject]@{ roles = @('bulk-code'); tier = 'cheap'
+                                         trial = [pscustomobject]@{ passed = 3; total = 35 } } }
+    policy = [pscustomobject]@{} }
+Assert "a failed trial is never the answer" ($null -eq (Select-FleetWorker -Fleet $onlyFailed -TaskType 'bulk-code' -Now $now))
+Assert "-Explicit still reaches it"           ((Select-FleetWorker -Fleet $onlyFailed -TaskType 'bulk-code' -Explicit -Now $now).Name -eq 'c-laguna')
+$halfFailed = [pscustomobject]@{ workers = [pscustomobject]@{
+        'half' = [pscustomobject]@{ roles = @('docs'); tier = 'cheap'; trial = [pscustomobject]@{ passed = 17; total = 35 } }
+        'fine' = [pscustomobject]@{ roles = @('docs'); tier = 'cheap'; trial = [pscustomobject]@{ passed = 18; total = 35 } } }
+    policy = [pscustomobject]@{} }
+Assert "under half is out of ANY task type" ((Select-FleetWorker -Fleet $halfFailed -TaskType 'docs' -Now $now).Name -eq 'fine')
+
+# The chain only reorders: role, gate, trial and availability filtering still decide eligibility,
+# so a gated or untrialled model in the chain falls through to the next entry.
+$gated = [pscustomobject]@{ workers = [pscustomobject]@{
+        'g-free'   = [pscustomobject]@{ roles = @('bulk-code'); tier = 'cheap'; gate = 'explicit-call-only'
+                                         offer = [pscustomobject]@{ free = $true }
+                                         trial = [pscustomobject]@{ passed = 35; total = 35; seconds = 20 } }
+        'g-priced' = [pscustomobject]@{ roles = @('bulk-code'); tier = 'cheap'
+                                         offer = [pscustomobject]@{ free = $false }
+                                         trial = [pscustomobject]@{ passed = 35; total = 35; seconds = 60 } } }
+    policy = [pscustomobject]@{ builder_chain = @('@cc-free-best', '@cc-deal-best') } }
+$gatedPick = Select-FleetWorker -Fleet $gated -TaskType 'bulk-code' -Now $now
+Assert "a gated chain entry falls through" ($gatedPick.Name -eq 'g-priced' -and $gatedPick.Reason -like '*(builder chain: @cc-deal-best)*')
+Assert "no roles for a chain name -> next"  (@(Resolve-GrimdexBuilderChain -Models $cf -Now $now -WithEntry | Where-Object Entry -eq 'ghost').Count -eq 0)
+
+# No chain -> the old default_builder behaviour, unchanged.
+$plain = [pscustomobject]@{ workers = [pscustomobject]@{
+        'p-hint'  = [pscustomobject]@{ roles = @('bulk-code'); tier = 'build' }
+        'p-cheap' = [pscustomobject]@{ roles = @('bulk-code'); tier = 'cheap' } }
+    policy = [pscustomobject]@{ default_builder = 'p-hint' } }
+$nb = Select-FleetWorker -Fleet $plain -TaskType 'bulk-code' -Now $now
+Assert "no chain -> default_builder"    ($nb.Name -eq 'p-hint' -and $nb.Reason -like '*(policy hint)*')
+$noHint = [pscustomobject]@{ workers = $plain.workers; policy = [pscustomobject]@{ } }
+Assert "no chain, no hint -> cheapest"  ((Select-FleetWorker -Fleet $noHint -TaskType 'bulk-code' -Now $now).Name -eq 'p-cheap')
+$emptyChain = [pscustomobject]@{ workers = $plain.workers
+                                 policy = [pscustomobject]@{ default_builder = 'p-hint'; builder_chain = @() } }
+Assert "empty chain -> default_builder"  ((Select-FleetWorker -Fleet $emptyChain -TaskType 'bulk-code' -Now $now).Name -eq 'p-hint')
+Assert "the chain is not read for small-code" ($null -eq (Select-FleetWorker -Fleet $cf -TaskType 'docs' -Now $now))
+
 Write-Host "shipped example validates"
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$examplePath = Join-Path (Join-Path $repoRoot 'config') 'fleet.example.json'
-Assert "fleet.example.json exists" (Test-Path -LiteralPath $examplePath)
+$examplePath = Join-Path (Join-Path $repoRoot 'config') 'models.example.json'
+Assert "models.example.json exists" (Test-Path -LiteralPath $examplePath)
 $ex = Get-Content -LiteralPath $examplePath -Raw | ConvertFrom-Json
 Assert "example has workers"  ($ex.workers.PSObject.Properties.Name.Count -ge 1)
 $exSel = Select-FleetWorker -Fleet $ex -TaskType 'docs'
@@ -176,6 +272,40 @@ $errsBefore = $Error.Count
 $aliasPick = Select-FleetWorker -Fleet $aliasFleet -TaskType 'docs'
 Assert "roles-less worker skipped, no throw" ($aliasPick -and $aliasPick.Name -eq 'haiku')
 Assert "roles-less worker emits no error records" ($Error.Count -eq $errsBefore)
+
+Write-Host "gate semantics (grimdex-d051)"
+$gf = [pscustomobject]@{ workers = [pscustomobject]@{
+    ok1  = [pscustomobject]@{ roles = @('on-call'); gate = 'explicit-call-only' }
+    ok2  = [pscustomobject]@{ roles = @('on-call'); gate = 'explicit-call-only; skip-if-weekly>50%' }
+    bad  = [pscustomobject]@{ roles = @('bulk-code'); gate = 'separate quota pool (credits)' }
+    pool = [pscustomobject]@{ roles = @('bulk-code'); pool = 'separate quota pool (credits)'; availability = 'available' }
+} }
+$bad = @(Test-GrimdexFleetGates -Fleet $gf)
+Assert "descriptive gate flagged"           ($bad.Count -eq 1 -and $bad[0].Name -eq 'bad')
+Assert "pool field never filters selection" ((Select-FleetWorker -Fleet $gf -TaskType 'bulk-code').Name -eq 'pool')
+$liveRoot = Split-Path $PSScriptRoot -Parent
+
+Write-Host "code_exclude"
+$cx = [pscustomobject]@{ workers = [pscustomobject]@{
+    'cc-ling' = [pscustomobject]@{ roles = @('bulk-code','docs'); tier = 'cheap' }
+    glm       = [pscustomobject]@{ roles = @('bulk-code'); tier = 'cheap' } }
+  policy = [pscustomobject]@{ builder_chain = @('cc-ling','glm'); code_exclude = @('(?i)ling') } }
+Assert "excluded model skipped in the chain for bulk-code" ((Select-FleetWorker -Fleet $cx -TaskType 'bulk-code').Name -eq 'glm')
+Assert "excluded model not picked for code even with -Explicit" ((Select-FleetWorker -Fleet $cx -TaskType 'bulk-code' -Explicit).Name -eq 'glm')
+Assert "excluded model still used for non-code roles" ((Select-FleetWorker -Fleet $cx -TaskType 'docs').Name -eq 'cc-ling')
+
+if (Test-Path (Join-Path $liveRoot 'config' 'models.json')) {
+    $live = Get-GrimdexFleet -GrimdexRoot $liveRoot -WarningAction SilentlyContinue
+    Assert "live fleet: every gate is a restriction" (@(Test-GrimdexFleetGates -Fleet $live).Count -eq 0)
+    Assert "live fleet: bulk-code has a worker"      ($null -ne (Select-FleetWorker -Fleet $live -TaskType 'bulk-code'))
+    $liveChain = @(Resolve-GrimdexBuilderChain -Models $live)
+    Assert "live fleet: builder_chain resolves"      ($liveChain.Count -ge 1)
+    # The chain head may be 'out' (a promo that ended), so assert the pick came from the chain,
+    # not that it is the head.
+    $livePick = Select-FleetWorker -Fleet $live -TaskType 'bulk-code'
+    Assert "live fleet: the builder chain picks, not default_builder" `
+        ($livePick.Name -in $liveChain -and $livePick.Reason -like '*(builder chain:*')
+}
 
 if ($script:fail) { Write-Host "`n$script:fail FAILED" -ForegroundColor Red; exit 1 }
 else { Write-Host "`nAll passed" -ForegroundColor Green }

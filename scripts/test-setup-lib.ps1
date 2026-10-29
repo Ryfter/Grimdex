@@ -129,6 +129,27 @@ Assert 'overwrite restores mirror content' ((Get-Content (Join-Path $liveRules '
 $r = Sync-GrimdexRules -GrimdexRoot $sandbox -RulesPath $liveRules
 Assert 'no mirror dir -> empty result' (@($r).Count -eq 0)
 
+if (-not $IsWindows) {
+    $foreignRules = Join-Path $sandbox 'foreign-rules'
+    New-Item -ItemType Directory -Path $foreignRules | Out-Null
+    $foreignLink = Join-Path $sandbox 'foreign-link'
+    New-Item -ItemType SymbolicLink -Path $foreignLink -Target $foreignRules | Out-Null
+    $threw = $false
+    try { Sync-GrimdexRules -GrimdexRoot $rulesRoot -RulesPath $foreignLink -Force | Out-Null } catch { $threw = $true }
+    Assert 'rules sync refuses a root symlink to a foreign directory' $threw
+    Assert 'foreign rules directory stayed untouched' (-not (Test-Path (Join-Path $foreignRules 'a.md')))
+
+    $linkedFileRoot = Join-Path $sandbox 'linked-file-rules'
+    New-Item -ItemType Directory -Path $linkedFileRoot | Out-Null
+    $outsideRule = Join-Path $sandbox 'outside-rule.md'
+    Set-Content $outsideRule -Value 'outside'
+    New-Item -ItemType SymbolicLink -Path (Join-Path $linkedFileRoot 'a.md') -Target $outsideRule | Out-Null
+    $threw = $false
+    try { Sync-GrimdexRules -GrimdexRoot $rulesRoot -RulesPath $linkedFileRoot -Force | Out-Null } catch { $threw = $true }
+    Assert 'rules sync refuses a symlinked destination file' $threw
+    Assert 'symlinked rule target stayed untouched' ((Get-Content $outsideRule -Raw).Contains('outside'))
+}
+
 # --- Install-GrimdexRulesJunction ---
 $rjRoot = Join-Path $sandbox 'grimdex-rules-junction'
 New-FakeGrimdexRepo $rjRoot
@@ -228,25 +249,25 @@ foreach ($p in $kp, $kp2, $kp3, $kp4) {
 # --- Initialize-GrimdexExampleConfigs (seeded operator examples, spec 2026-09-28) ---
 $ex = Join-Path $sandbox 'ex-root'
 New-Item -ItemType Directory -Force -Path (Join-Path $ex 'config'), (Join-Path $ex 'examples' 'operator-setup') | Out-Null
-Set-Content (Join-Path $ex 'config' 'fleet.example.json') '{"plain":true}'
+Set-Content (Join-Path $ex 'config' 'models.example.json') '{"plain":true}'
 Set-Content (Join-Path $ex 'config' 'quota.example.json') '{"plain":true}'
 Set-Content (Join-Path $ex 'config' 'sync.example.json') '{"plain":true}'
-Set-Content (Join-Path $ex 'examples' 'operator-setup' 'fleet.json') '{"operator":true}'
+Set-Content (Join-Path $ex 'examples' 'operator-setup' 'models.json') '{"operator":true}'
 Set-Content (Join-Path $ex 'config' 'sync.json') '{"mine":true}'
 Set-Content (Join-Path $ex 'config' 'publish-scrub.example.json') '{}'
 Set-Content (Join-Path $ex 'config' 'grimdex-mode.example.json') '{}'
 $r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot $ex -Choice operator)
 function ExRow($n) { $r | Where-Object name -eq $n }
-Assert 'examples: operator copy used when present' ((ExRow 'fleet.json').action -eq 'copied-operator' -and (Get-Content (Join-Path $ex 'config' 'fleet.json') -Raw) -match 'operator')
+Assert 'examples: operator copy used when present' ((ExRow 'models.json').action -eq 'copied-operator' -and (Get-Content (Join-Path $ex 'config' 'models.json') -Raw) -match 'operator')
 Assert 'examples: plain fallback when no operator example' ((ExRow 'quota.json').action -eq 'copied-plain')
 Assert 'examples: existing config never overwritten' ((ExRow 'sync.json').action -eq 'exists' -and (Get-Content (Join-Path $ex 'config' 'sync.json') -Raw) -match 'mine')
 Assert 'examples: scrub + mode configs never seeded' (-not (ExRow 'publish-scrub.json') -and -not (ExRow 'grimdex-mode.json') -and -not (Test-Path (Join-Path $ex 'config' 'publish-scrub.json')))
-Remove-Item (Join-Path $ex 'config' 'fleet.json'), (Join-Path $ex 'config' 'quota.json')
+Remove-Item (Join-Path $ex 'config' 'models.json'), (Join-Path $ex 'config' 'quota.json')
 $r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot $ex -Choice plain)
-Assert 'examples: plain choice ignores operator example' ((ExRow 'fleet.json').action -eq 'copied-plain' -and (Get-Content (Join-Path $ex 'config' 'fleet.json') -Raw) -match 'plain')
-Remove-Item (Join-Path $ex 'config' 'fleet.json'), (Join-Path $ex 'config' 'quota.json')
+Assert 'examples: plain choice ignores operator example' ((ExRow 'models.json').action -eq 'copied-plain' -and (Get-Content (Join-Path $ex 'config' 'models.json') -Raw) -match 'plain')
+Remove-Item (Join-Path $ex 'config' 'models.json'), (Join-Path $ex 'config' 'quota.json')
 $r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot $ex -NonInteractive)
-Assert 'examples: non-interactive without choice skips' ((ExRow 'fleet.json').action -eq 'skipped' -and -not (Test-Path (Join-Path $ex 'config' 'fleet.json')))
+Assert 'examples: non-interactive without choice skips' ((ExRow 'models.json').action -eq 'skipped' -and -not (Test-Path (Join-Path $ex 'config' 'models.json')))
 $r = @(Initialize-GrimdexExampleConfigs -GrimdexRoot (Join-Path $sandbox 'no-such'))
 Assert 'examples: no config dir -> nothing to do' ($r.Count -eq 0)
 

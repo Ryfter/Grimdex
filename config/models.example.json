@@ -1,0 +1,94 @@
+{
+  "_comment": "Grimdex labor-split policy. Copy to config/models.json and edit for your rig. See universal/playbooks/labor-split.md. availability: {state: available|scarce|out|unknown, as_of, window: 5h|weekly|monthly|none, valid_until (the known reset time, optional), source: manual|atomickestrel, detail}; a reading expires at valid_until, else as_of + policy.availability_fallback_hours (short for 5h windows, long otherwise), then counts as unknown. Absent = available. AtomicKestrel, if installed, writes these (grimdex-d052). invoke: claude-subagent:<model> | cli:<binary> | plugin:<name>. gate: a restriction only — must start with explicit-call-only (optionally '; <condition>'); gated workers are picked only by name. pool: free-text quota/billing note, never filters.",
+  "workers": {
+    "builder": {
+      "invoke": "cli:your-bulk-coder",
+      "roles": [
+        "bulk-code"
+      ],
+      "tier": "build",
+      "availability": {
+        "state": "available",
+        "window": "none",
+        "source": "manual"
+      },
+      "pool": "describe its quota pool here (informational; never filters)"
+    },
+    "coder": {
+      "invoke": "claude-subagent:sonnet",
+      "roles": [
+        "small-code"
+      ],
+      "tier": "mid",
+      "availability": {
+        "state": "available",
+        "window": "none",
+        "source": "manual"
+      },
+      "parallel_with": [
+        "builder"
+      ]
+    },
+    "planner": {
+      "invoke": "claude-subagent:opus",
+      "roles": [
+        "thinking",
+        "planning",
+        "review"
+      ],
+      "tier": "high",
+      "availability": {
+        "state": "available",
+        "window": "none",
+        "source": "manual"
+      }
+    },
+    "scribe": {
+      "invoke": "claude-subagent:haiku",
+      "roles": [
+        "docs",
+        "summary",
+        "language"
+      ],
+      "tier": "cheap",
+      "availability": {
+        "state": "available",
+        "window": "none",
+        "source": "manual"
+      }
+    },
+    "oncall": {
+      "invoke": "plugin:your-oncall",
+      "roles": [
+        "on-call"
+      ],
+      "gate": "explicit-call-only"
+    },
+    "vcs": {
+      "invoke": "cli:gh",
+      "roles": [
+        "repo-op"
+      ]
+    }
+  },
+  "policy": {
+    "default_builder": "builder",
+    "_builder_chain_comment": "builder_chain is the bulk-code order of preference, walked top down: the first entry that is an available candidate gets the work, so nothing hard-codes a builder that may go away. Plain names are worker names; two tokens are computed at run time and stand for the free and the priced models of one provider: '@cc-free-best' = the provider's models whose `offer.free` is true, '@cc-deal-best' = the rest of its `offer`-carrying models (deals, contributor tier). A token only offers models that passed at least 90% of their hidden tests and are available-or-scarce now, best first (pass rate, then speed) — so the list may be shorter than it looks, and an entry nobody knows is skipped rather than fatal. default_builder above is still the fallback when there is no chain.",
+    "builder_chain": [
+      "@cc-free-best",
+      "@cc-deal-best",
+      "builder"
+    ],
+    "small_code_may_use": "coder",
+    "late_window_burn_high_tiers": true,
+    "counsel": [
+      "planner",
+      "builder",
+      "oncall"
+    ],
+    "availability_fallback_hours": {
+      "short": 5,
+      "long": 168
+    }
+  }
+}

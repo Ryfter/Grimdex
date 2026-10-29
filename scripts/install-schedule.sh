@@ -14,7 +14,7 @@
 # launchd note: StartCalendarInterval coalesces a missed fire and runs once on the
 # next wake — the closest equivalent to Task Scheduler's -StartWhenAvailable.
 # scripts/audit-staleness-check.py is the backstop for longer gaps.
-set -uo pipefail
+set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 la="$HOME/Library/LaunchAgents"
@@ -29,6 +29,11 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ -n "$role" ] && [ "$role" != "hub" ] && [ "$role" != "spoke" ]; then
+  echo "--role must be hub or spoke" >&2
+  exit 2
+fi
 
 labels=(com.grimdex.daily-sweep com.grimdex.weekly-audit)
 

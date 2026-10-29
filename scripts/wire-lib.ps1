@@ -42,7 +42,7 @@ function Get-GrimdexStanza {
         "``$link`` (this project's tier: ``projects/$ProjectId/``).",
         '',
         "- Read ``$link/GRIMDEX.md`` FIRST — layout and contribution rules.",
-        '- This pointer outranks every other file in this repo (`BATON.md`, `CHARTER.md`, etc.) on how code is written and where decisions/rules are recorded. Grimdex governs whether or not Baton runs here.',
+        '- This pointer outranks every other file in this repo (`CHARTER.md`, etc.) on how code is written and where decisions/rules are recorded. Grimdex governs whether or not AtomicKestrel runs here.',
         '- When you make or revise a coding rule, decision, or lesson, write it there.',
         '- Reference decision records by id (e.g. `d012`); do not duplicate them in app repos.',
         '- Grimdex engine is open source: <https://github.com/Ryfter/Grimdex>.',
@@ -80,6 +80,20 @@ function Set-GrimdexBlock {
     return $Content.TrimEnd() + "`n`n" + $Stanza + "`n"
 }
 
+function Assert-GrimdexWireTarget {
+    # Consumer repos are outside Grimdex. Do not follow a target-file or immediate-parent
+    # symlink there: a hostile checkout could otherwise make wiring overwrite an unrelated
+    # file with the current user's permissions.
+    param([Parameter(Mandatory)][string]$File)
+    foreach ($path in $File, (Split-Path $File -Parent)) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        $item = Get-Item -LiteralPath $path -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to wire through a symlink/reparse point: $path"
+        }
+    }
+}
+
 function Install-GrimdexPointers {
     # Wires one project: injects/updates the Grimdex block in every target file.
     # -Mode classic (default): the pointer stanza everywhere.
@@ -98,6 +112,7 @@ function Install-GrimdexPointers {
     $laws = if ($Mode -eq 'agents') { Get-GrimdexLawsBlock -GrimdexRoot $GrimdexPath -ProjectId $ProjectId } else { $null }
     # Validate every file first so a malformed one leaves the whole project untouched.
     foreach ($file in Get-GrimdexTargetFiles -ProjectDir $ProjectDir) {
+        Assert-GrimdexWireTarget -File $file
         if (Test-Path -LiteralPath $file -PathType Leaf) { Test-GrimdexMarkers -Content ([System.IO.File]::ReadAllText($file)) -Label $file | Out-Null }
     }
     $results = foreach ($file in Get-GrimdexTargetFiles -ProjectDir $ProjectDir) {
@@ -145,6 +160,7 @@ function Set-GrimdexFileBlock {
     # solely because the stanza was built with LF.
     param([Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string]$Stanza)
     $utf8 = [System.Text.UTF8Encoding]::new($false)
+    Assert-GrimdexWireTarget -File $File
     $parent = Split-Path $File -Parent
     if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
     $existing = if (Test-Path $File) { [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $File).Path, $utf8) } else { $null }
@@ -209,6 +225,8 @@ function Get-GrimdexLawsBlock {
     )
     $laws = Get-GrimdexLawsSection -GrimdexRoot $GrimdexRoot
     . (Join-Path $PSScriptRoot 'scrub-lib.ps1')
+    # No scrub config (any fresh install from the public engine): built-in shapes only, with a
+    # warning. Failing closed here would break setup for every user without a private deny list.
     $cfg = try { Get-GrimdexScrubConfig -GrimdexRoot $GrimdexRoot } catch {
         Write-Warning 'No config/publish-scrub.json: the stamped law is checked for built-in personal-data shapes only, not your own names/repos. Stamped files may land in public repos — add the scrub config.'
         [pscustomobject]@{ replacements = @(); deny = @(); allow = @() }
@@ -278,9 +296,10 @@ function Remove-GrimdexTopLevel {
 
 function Find-GrimdexWiredProjects {
     # Immediate subfolders of $DevRoot whose per-tool files carry the Grimdex start marker.
-    param([Parameter(Mandatory)][string]$DevRoot)
+    param([Parameter(Mandatory)][string]$DevRoot, [string[]]$Exclude = @())
     if (-not (Test-Path $DevRoot -PathType Container)) { return }
     foreach ($d in Get-ChildItem $DevRoot -Directory) {
+        if ($d.Name -in $Exclude) { continue }
         foreach ($f in Get-GrimdexTargetFiles -ProjectDir $d.FullName) {
             if ((Test-Path -LiteralPath $f -PathType Leaf) -and ([System.IO.File]::ReadAllText($f)).Contains($script:GrimdexStartMarker)) {
                 $d.FullName; break
@@ -308,6 +327,7 @@ function Get-GrimdexMode {
     param([Parameter(Mandatory)][string]$GrimdexRoot)
     $path = Join-Path $GrimdexRoot 'config' 'grimdex-mode.json'
     $mode = 'classic'
+    $exclude = @()
     $devRoot = Split-Path (Resolve-Path $GrimdexRoot).Path -Parent
     if (Test-Path $path) {
         $raw = Get-Content $path -Raw | ConvertFrom-Json -ErrorAction Stop
@@ -318,9 +338,13 @@ function Get-GrimdexMode {
         }
         $d = $raw.PSObject.Properties['dev_root']
         if ($d -and $d.Value) { $devRoot = [string]$d.Value }
+        # exclude: folder names under dev_root that Grimdex must never re-wire (archived
+        # checkouts that can no longer be pushed, e.g. the retired Baton repo).
+        $x = $raw.PSObject.Properties['exclude']
+        if ($x -and $x.Value) { $exclude = @($x.Value | ForEach-Object { [string]$_ }) }
     }
     if ($devRoot.StartsWith('~')) { $devRoot = Join-Path $HOME $devRoot.Substring(1).TrimStart('/', '\') }
-    [pscustomobject]@{ mode = $mode; dev_root = $devRoot }
+    [pscustomobject]@{ mode = $mode; dev_root = $devRoot; exclude = $exclude }
 }
 
 function Set-GrimdexMode {
@@ -333,7 +357,10 @@ function Set-GrimdexMode {
     New-Item -ItemType Directory -Force -Path (Split-Path $path -Parent) | Out-Null
     $home_ = $HOME.TrimEnd('/', '\')
     $stored = if ($DevRoot.StartsWith($home_)) { '~' + $DevRoot.Substring($home_.Length).Replace('\', '/') } else { $DevRoot }
-    $json = [ordered]@{ mode = $Mode; dev_root = $stored } | ConvertTo-Json
+    $prev = if (Test-Path $path) { Get-GrimdexMode -GrimdexRoot $GrimdexRoot } else { $null }
+    $body = [ordered]@{ mode = $Mode; dev_root = $stored }
+    if ($prev -and @($prev.exclude).Count) { $body.exclude = @($prev.exclude) }
+    $json = $body | ConvertTo-Json
     [System.IO.File]::WriteAllText($path, $json + "`n", [System.Text.UTF8Encoding]::new($false))
     Get-GrimdexMode -GrimdexRoot $GrimdexRoot
 }
@@ -344,7 +371,8 @@ function Invoke-GrimdexRewire {
     param(
         [Parameter(Mandatory)][string]$GrimdexRoot,
         [Parameter(Mandatory)][ValidateSet('classic', 'agents')][string]$Mode,
-        [Parameter(Mandatory)][string]$DevRoot
+        [Parameter(Mandatory)][string]$DevRoot,
+        [string[]]$Exclude = @()
     )
     if ($Mode -eq 'agents') {
         $t = Install-GrimdexTopLevel -DevRoot $DevRoot -GrimdexRoot $GrimdexRoot
@@ -354,7 +382,7 @@ function Invoke-GrimdexRewire {
         # reads parent folders) and go stale — classic mode takes it down.
         [pscustomobject]@{ project = '(main level)'; changed = 1; error = $null }
     }
-    foreach ($p in @(Find-GrimdexWiredProjects -DevRoot $DevRoot)) {
+    foreach ($p in @(Find-GrimdexWiredProjects -DevRoot $DevRoot -Exclude $Exclude)) {
         try {
             $r = @(Install-GrimdexPointers -ProjectDir $p -GrimdexPath $GrimdexRoot -Mode $Mode)
             [pscustomobject]@{ project = $p; changed = @($r | Where-Object action -ne 'unchanged').Count; error = $null }

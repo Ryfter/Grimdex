@@ -46,10 +46,23 @@ function Sync-GrimdexRules {
     )
     $mirror = Join-Path $GrimdexRoot 'universal' 'claude-rules'
     if (-not (Test-Path $mirror)) { return @() }
-    if ((Get-GrimdexJunctionState -KnowledgePath $RulesPath -Target $mirror) -eq 'linked') {
+    $state = Get-GrimdexJunctionState -KnowledgePath $RulesPath -Target $mirror
+    if ($state -eq 'linked') {
         return ,([pscustomobject]@{ rule = '(all)'; action = 'linked' })
     }
+    if ($state -eq 'linked-elsewhere') {
+        throw "Rules path is linked somewhere other than the Grimdex mirror; refusing to write through it: $RulesPath"
+    }
     if (-not (Test-Path $RulesPath)) { New-Item -ItemType Directory -Force -Path $RulesPath | Out-Null }
+    foreach ($src in Get-ChildItem $mirror -Filter *.md) {
+        $dst = Join-Path $RulesPath $src.Name
+        if (Test-Path -LiteralPath $dst) {
+            $item = Get-Item -LiteralPath $dst -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Live rule is a symlink/reparse point; refusing to read or overwrite its target: $dst"
+            }
+        }
+    }
     $results = foreach ($src in Get-ChildItem $mirror -Filter *.md) {
         $dst = Join-Path $RulesPath $src.Name
         # compare EOL-insensitively: git autocrlf rewrites the mirror's line endings

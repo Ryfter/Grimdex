@@ -216,7 +216,7 @@ $c4 = Get-QuotaState -GrimdexRoot $sroot -Now $now.AddSeconds(605) -ProbeCommand
         -StatuslineReader $noStatusline -CachePath $cacheFile2 -NoCache
 Assert "-NoCache always re-probes" ($script:probeCalls.n -eq 3)
 
-Write-Host "sensor file: Baton snapshot shape, observed_at, configured path"
+Write-Host "sensor file: AtomicKestrel snapshot shape, observed_at, configured path"
 $sensorDir = Join-Path ([System.IO.Path]::GetTempPath()) ("sensor_" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $sensorDir -Force | Out-Null
 $sensorFile = Join-Path $sensorDir 'claude-quota.json'

@@ -157,8 +157,8 @@ function ConvertFrom-StatuslineRateLimits {
         if ($names -notcontains $m.Key) { continue }
         $slot = $RateLimits.($m.Key)
         if ($null -eq $slot) { continue }
-        # Claude Code's rate_limits use used_percentage / resets_at; the Baton statusline
-        # snapshot (~/.baton/claude-quota.json) stores used_pct / resets_at_unix.
+        # Claude Code's rate_limits use used_percentage / resets_at; AtomicKestrel's statusline
+        # snapshot (~/.kes/claude-quota.json) stores used_pct / resets_at_unix.
         $used = Get-QuotaField $slot 'used_percentage', 'used_pct'
         if ($null -eq $used) { continue }
         $resets = ConvertTo-QuotaDateTime (Get-QuotaField $slot 'resets_at', 'resets_at_unix')

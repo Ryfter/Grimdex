@@ -36,6 +36,9 @@ function Get-RuleSyncProposalPath {
         [Parameter(Mandatory)][string]$GrimdexRoot,
         [Parameter(Mandatory)][string]$Machine
     )
+    if ($Machine -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "machine name contains path or frontmatter metacharacters: $Machine"
+    }
     Join-Path $GrimdexRoot 'universal' 'promotions' ("{0}.sync.md" -f $Machine.ToLowerInvariant())
 }
 
@@ -95,9 +98,23 @@ function Test-RuleSyncTargetAllowed {
     )
     $norm = $Target -replace '\\', '/'
     $isLaw  = $norm -eq 'GRIMDEX.md'
-    $isRule = $norm -like 'universal/claude-rules/*'
+    # Rules are direct Markdown children. Reject traversal, nested paths and alternate
+    # separators before Join-Path ever sees the value from proposal frontmatter.
+    $isRule = $norm -match '^universal/claude-rules/[A-Za-z0-9._-]+\.md$'
     if (-not ($isLaw -or $isRule)) { return $false }
-    return Test-Path (Join-Path $GrimdexRoot ($norm -replace '/', '\'))
+    $root = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $GrimdexRoot).ProviderPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $abs = [IO.Path]::GetFullPath((Join-Path $root ($norm -replace '/', [IO.Path]::DirectorySeparatorChar)))
+    $comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+    if (-not $abs.StartsWith($root + [IO.Path]::DirectorySeparatorChar, $comparison)) { return $false }
+    if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) { return $false }
+    # No component below the root (dirs or the file itself) may be a symlink/reparse point.
+    $cur = $root
+    foreach ($seg in ($norm -split '/')) {
+        $cur = Join-Path $cur $seg
+        $item = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+        if (-not $item -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+    }
+    return $true
 }
 
 function Test-RuleSyncProposal {
@@ -141,7 +158,12 @@ function Approve-RuleSyncProposal {
     $r = Test-RuleSyncProposal -GrimdexRoot $GrimdexRoot -Path $Path
     if (-not $r.valid) { throw "cannot approve invalid proposal ($($r.reason)): $Path" }
     $p = $r.proposal
-    $abs = Join-Path $GrimdexRoot ($p.target -replace '/', '\')
+    # Validation above has already constrained this to GRIMDEX.md or one direct rule file.
+    # Re-check immediately before writing (the target may have changed since validation).
+    if (-not (Test-RuleSyncTargetAllowed -GrimdexRoot $GrimdexRoot -Target $p.target)) {
+        throw "target no longer allowed at write time: $($p.target)"
+    }
+    $abs = Join-Path $GrimdexRoot ($p.target -replace '/', [IO.Path]::DirectorySeparatorChar)
     Set-Content -Path $abs -Value $p.content -NoNewline -Encoding utf8
     Remove-Item $Path
     $entry = @(

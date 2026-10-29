@@ -55,11 +55,18 @@ $script:GrimdexLeakShapes = @(
     @{ kind = 'lan-ip'; pattern = '\b(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'; safe = $null }
 )
 
+# Paths (wildcards) where the marker is honoured: the shape regexes and the test fixtures.
+$script:GrimdexScrubMarkerPaths = @(
+    'scripts/scrub-lib.ps1',
+    'scripts/test-*.ps1'
+)
+
 function Find-GrimdexLeaks {
     # Returns one finding per (line, match): deny-list hits (case-insensitive) plus the
-    # built-in shapes. A line matching any allow regex is skipped entirely. A line carrying
-    # `grimdex:scrub-ok:<kind>[,<kind>...]` excuses only the named built-in shapes on that
-    # line (fixtures, the shape regexes themselves); deny-list hits are never excused.
+    # built-in shapes. Allow regexes remove only their exact matching substrings before the
+    # remaining line is scanned; they never suppress an unrelated leak on the same line.
+    # `grimdex:scrub-ok:<kind>[,<kind>...]` is honoured only in this library and the test
+    # suites (fake fixtures). Letting arbitrary engine content carry it would make it a bypass.
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
         [Parameter(Mandatory)]$Config,
@@ -69,20 +76,25 @@ function Find-GrimdexLeaks {
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         if (-not $line) { continue }
-        $allowed = $false
-        foreach ($a in @($Config.allow)) { if ($line -match $a) { $allowed = $true; break } }
-        if ($allowed) { continue }
+        $scanLine = $line
+        foreach ($a in @($Config.allow)) {
+            $scanLine = [regex]::Replace($scanLine, [string]$a, '')
+        }
+        if (-not $scanLine) { continue }
         foreach ($d in @($Config.deny)) {
-            foreach ($m in [regex]::Matches($line, [string]$d, 'IgnoreCase')) {
+            foreach ($m in [regex]::Matches($scanLine, [string]$d, 'IgnoreCase')) {
                 [pscustomobject]@{ path = $Path; line = $i + 1; kind = 'deny'; match = $m.Value }
             }
         }
         $excused = @()
-        $mk = [regex]::Match($line, 'grimdex:scrub-ok:([a-z,-]+)')
-        if ($mk.Success) { $excused = $mk.Groups[1].Value -split ',' }
+        $normalPath = $Path.Replace('\', '/')
+        if (@($script:GrimdexScrubMarkerPaths | Where-Object { $normalPath -like $_ }).Count) {
+            $mk = [regex]::Match($scanLine, 'grimdex:scrub-ok:([a-z,-]+)')
+            if ($mk.Success) { $excused = $mk.Groups[1].Value -split ',' }
+        }
         foreach ($s in $script:GrimdexLeakShapes) {
             if ($s.kind -in $excused) { continue }
-            foreach ($m in [regex]::Matches($line, $s.pattern)) {
+            foreach ($m in [regex]::Matches($scanLine, $s.pattern)) {
                 if ($s.safe -and $m.Value -match $s.safe) { continue }
                 [pscustomobject]@{ path = $Path; line = $i + 1; kind = $s.kind; match = $m.Value }
             }

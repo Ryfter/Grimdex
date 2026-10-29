@@ -35,6 +35,15 @@ usage() {
     exit 2
 }
 
+validate_project() {
+    case "$1" in
+        ''|*[!A-Za-z0-9._-]*)
+            echo "invalid project-id (use letters, digits, dot, underscore or hyphen): $1" >&2
+            exit 2
+            ;;
+    esac
+}
+
 decisions_dir() {
     printf '%s/projects/%s/decisions' "$root" "$1"
 }
@@ -48,7 +57,7 @@ max_committed() {
     d=$(decisions_dir "$1")
     [ -d "$d" ] || { echo 0; return; }
     ls "$d" 2>/dev/null | sed -n 's/^d\([0-9][0-9]*\)-.*\.md$/\1/p' |
-        sed 's/^0*//' | sort -n | tail -1 | sed 's/^$/0/'
+        sed 's/^0*//; s/^$/0/' | sort -n | tail -1 | sed 's/^$/0/'
 }
 
 # Highest dNNN currently leased (live or not -- reap first if you want only live ones).
@@ -56,11 +65,12 @@ max_leased() {
     l=$(leases_dir "$1")
     [ -d "$l" ] || { echo 0; return; }
     ls "$l" 2>/dev/null | sed -n 's/^d\([0-9][0-9]*\)\.lease$/\1/p' |
-        sed 's/^0*//' | sort -n | tail -1 | sed 's/^$/0/'
+        sed 's/^0*//; s/^$/0/' | sort -n | tail -1 | sed 's/^$/0/'
 }
 
 cmd_claim() {
     project="${1:?claim needs a project-id}"; shift
+    validate_project "$project"
     tag=''
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -72,6 +82,8 @@ cmd_claim() {
     l=$(leases_dir "$project")
     mkdir -p "$l"
     a=$(max_committed "$project"); b=$(max_leased "$project")
+    a=$(printf '%s' "$a" | sed 's/^0*//; s/^$/0/')
+    b=$(printf '%s' "$b" | sed 's/^0*//; s/^$/0/')
     i=$(( (a > b ? a : b) + 1 ))
     while :; do
         numstr=$(printf '%03d' "$i")
@@ -90,8 +102,16 @@ cmd_claim() {
 
 cmd_release() {
     project="${1:?release needs a project-id}"
+    validate_project "$project"
     num="${2:?release needs a decision number, e.g. 042 or d042}"
-    num=$(echo "$num" | sed 's/^d//')
+    num=$(printf '%s' "$num" | sed 's/^d//')
+    case "$num" in
+        ''|*[!0-9]*)
+            echo "invalid decision number: ${2}" >&2
+            exit 2
+            ;;
+    esac
+    num=$(printf '%s' "$num" | sed 's/^0*//; s/^$/0/')
     numstr=$(printf '%03d' "$num")
     rm -f "$(leases_dir "$project")/d${numstr}.lease"
 }
@@ -119,6 +139,7 @@ reap_one() {
 
 cmd_reap() {
     project="${1:?reap needs a project-id}"; shift || true
+    validate_project "$project"
     ttl_hours=2
     while [ $# -gt 0 ]; do
         case "$1" in --ttl-hours) ttl_hours="$2"; shift 2 ;; *) usage ;; esac
@@ -141,6 +162,7 @@ cmd_reap_all() {
 
 cmd_list() {
     project="${1:?list needs a project-id}"
+    validate_project "$project"
     l=$(leases_dir "$project")
     [ -d "$l" ] || return 0
     for f in "$l"/d*.lease; do

@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
   Grimdex first-run setup. Idempotent; safe to re-run.
-    pwsh setup.ps1                          # verify structure + report junction states
+    pwsh setup.ps1                          # verify/report; deploy missing mirrored rules/config examples
     pwsh setup.ps1 -CreateJunction          # also swap ~/.claude/knowledge -> junction (asks first)
     pwsh setup.ps1 -LinkRules               # also swap ~/.claude/rules -> universal/claude-rules (asks first)
     pwsh setup.ps1 -CreateJunction -Force   # non-interactive (still refuses dirty trees / diverged rules)
@@ -142,18 +142,29 @@ if ($Mode -or $DevRoot) {
 }
 Write-Host ("  Rules mode: {0}  (dev root: {1})" -f $cur.mode, $cur.dev_root)
 if ($rewire) {
-    $rw = @(Invoke-GrimdexRewire -GrimdexRoot $root -Mode $cur.mode -DevRoot $cur.dev_root)
+    $rw = @(Invoke-GrimdexRewire -GrimdexRoot $root -Mode $cur.mode -DevRoot $cur.dev_root -Exclude @($cur.exclude))
     $changed = @($rw | Where-Object changed -gt 0)
     Write-Host ("  Re-wired {0} project(s) in {1} mode; {2} changed." -f @($rw | Where-Object project -ne '(main level)').Count, $cur.mode, $changed.Count) -ForegroundColor Green
     foreach ($c in $changed) { Write-Host ("    {0,2} file(s)  {1}" -f $c.changed, $c.project) }
     foreach ($e in @($rw | Where-Object error)) { Write-Warning "$($e.project): $($e.error)" }
     if ($changed.Count) { Write-Host '  Changed projects have uncommitted edits to their agent files — commit them from each repo.' }
 } elseif ($cur.mode -eq 'agents') {
-    $wired = @(Find-GrimdexWiredProjects -DevRoot $cur.dev_root)
+    $wired = @(Find-GrimdexWiredProjects -DevRoot $cur.dev_root -Exclude @($cur.exclude))
     $stale = @($wired | Where-Object { (Test-GrimdexStamp -ProjectDir $_ -GrimdexRoot $root) -ne 'current' })
     $top = Join-Path $cur.dev_root 'AGENTS.md'
     $topOk = (Test-Path $top) -and ([IO.File]::ReadAllText($top)).Contains("laws-version $(Get-GrimdexStampVersion -GrimdexRoot $root)")
     if ($stale.Count -or -not $topOk) {
         Write-Host ("  Stamps: {0} of {1} project(s) out of date{2} — run: pwsh setup.ps1 -Update" -f $stale.Count, $wired.Count, $(if ($topOk) { '' } else { ', main level out of date' })) -ForegroundColor Yellow
     } else { Write-Host ("  Stamps: all {0} project(s) + main level current." -f $wired.Count) -ForegroundColor Green }
+}
+
+# 9. Model availability (grimdex-d052): expired readings, and AtomicKestrel when it's absent
+. (Join-Path $root 'scripts' 'models-lib.ps1')
+$models = Get-GrimdexModels -GrimdexRoot $root -WarningAction SilentlyContinue
+if (-not $models) {
+    Write-Host '  Models: no config/models.json (copy config/models.example.json to start).'
+} else {
+    $notice = Get-GrimdexAvailabilityNotice -Models $models -AkInstalled (Test-GrimdexAtomicKestrel -Models $models)
+    if ($notice) { Write-Host "  Models: $notice" -ForegroundColor Yellow }
+    else { Write-Host ("  Models: all {0} availability reading(s) current." -f @($models.workers.PSObject.Properties).Count) -ForegroundColor Green }
 }

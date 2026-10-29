@@ -3,6 +3,9 @@
   "sync": [
     "setup.ps1",
     "scripts/fleet-lib.ps1",
+    "scripts/models-lib.ps1",
+    "scripts/set-model-availability.ps1",
+    "scripts/test-models-lib.ps1",
     "scripts/install-schedule.ps1",
     "scripts/install-schedule.sh",
     "scripts/run-scheduled.sh",
@@ -39,7 +42,7 @@
     "scripts/test-scrub-lib.ps1",
     "scripts/test-publish-lib.ps1",
     "config/engine-manifest.json",
-    "config/fleet.example.json",
+    "config/models.example.json",
     "config/learn-progress.example.json",
     "config/operator-network.example.json",
     "config/quota.example.json",
@@ -83,7 +86,7 @@
     "examples/*.md"
   ],
   "examples": {
-    "config/fleet.json": "examples/operator-setup/fleet.json",
+    "config/models.json": "examples/operator-setup/models.json",
     "config/quota.json": "examples/operator-setup/quota.json",
     "config/operator-network.json": "examples/operator-setup/operator-network.json",
     "config/sync.json": "examples/operator-setup/sync.json"
@@ -91,7 +94,7 @@
   "never": [
     "config/publish-scrub.json",
     "config/grimdex-mode.json",
-    "config/fleet.json",
+    "config/models.json",
     "config/quota.json",
     "config/learn-progress.json",
     "config/operator-network.json",

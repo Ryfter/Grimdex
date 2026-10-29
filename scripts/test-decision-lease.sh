@@ -7,10 +7,11 @@ lease="$script_dir/decision-lease.sh"
 sandbox=$(mktemp -d "${TMPDIR:-/tmp}/grimdex-lease-test.XXXXXX")
 export GRIMDEX_ROOT="$sandbox"
 failures=0
+passes=0
 
 assert() {
     label="$1"; cond="$2"
-    if [ "$cond" = "0" ]; then echo "PASS  $label"; else echo "FAIL  $label"; failures=$((failures + 1)); fi
+    if [ "$cond" = "0" ]; then echo "PASS  $label"; passes=$((passes + 1)); else echo "FAIL  $label"; failures=$((failures + 1)); fi
 }
 
 mkdir -p "$sandbox/projects/p1/decisions"
@@ -89,6 +90,52 @@ set +e
 sh "$lease" claim >/dev/null 2>&1; rc=$?
 set -e
 [ "$rc" -ne 0 ]; assert 'claim with no project-id -> nonzero exit' $?
+set +e
+sh "$lease" claim '../outside' >/dev/null 2>&1; rc=$?
+set -e
+[ "$rc" -eq 2 ]; assert 'path traversal project-id rejected' $?
+[ ! -e "$sandbox/outside" ]; assert 'path traversal created nothing outside projects' $?
+
+# ---------- zero-padded decision numbers: claim yields next correct number ----------
+mkdir -p "$sandbox/projects/zpclaim-a/decisions"
+printf x > "$sandbox/projects/zpclaim-a/decisions/d008-first.md"
+printf x > "$sandbox/projects/zpclaim-a/decisions/d009-second.md"
+got=$(sh "$lease" claim zpclaim-a)
+[ "$got" = "d010" ]; assert 'claim with d008/d009 present -> d010 (not octal)' $?
+
+mkdir -p "$sandbox/projects/zpclaim-b/decisions"
+printf x > "$sandbox/projects/zpclaim-b/decisions/d054-fiftyfour.md"
+got=$(sh "$lease" claim zpclaim-b)
+[ "$got" = "d055" ]; assert 'claim with d054 present -> d055 (not octal)' $?
+
+# ---------- release of zero-padded numbers targets the right lease ----------
+mkdir -p "$sandbox/projects/zprel/decisions/.leases"
+for n in 008 009 054 055 044 045; do
+    printf 'pid=1\nhost=h\nts=x\ntag=t\n' > "$sandbox/projects/zprel/decisions/.leases/d${n}.lease"
+done
+
+sh "$lease" release zprel 054
+[ ! -e "$sandbox/projects/zprel/decisions/.leases/d054.lease" ]; assert 'release 054 removes d054.lease' $?
+[ -e "$sandbox/projects/zprel/decisions/.leases/d044.lease" ]; assert 'release 054 leaves decoy d044.lease' $?
+
+sh "$lease" release zprel d055
+[ ! -e "$sandbox/projects/zprel/decisions/.leases/d055.lease" ]; assert 'release d055 removes d055.lease' $?
+[ -e "$sandbox/projects/zprel/decisions/.leases/d045.lease" ]; assert 'release d055 leaves decoy d045.lease' $?
+
+sh "$lease" release zprel 008
+[ ! -e "$sandbox/projects/zprel/decisions/.leases/d008.lease" ]; assert 'release 008 removes d008.lease' $?
+
+sh "$lease" release zprel d009
+[ ! -e "$sandbox/projects/zprel/decisions/.leases/d009.lease" ]; assert 'release d009 removes d009.lease' $?
+
+set +e
+sh "$lease" release zprel abc >/dev/null 2>&1; rc=$?
+set -e
+[ "$rc" -eq 2 ]; assert 'release non-numeric arg -> exit 2' $?
+set +e
+sh "$lease" release zprel d12x >/dev/null 2>&1; rc=$?
+set -e
+[ "$rc" -eq 2 ]; assert 'release non-numeric (d12x) arg -> exit 2' $?
 
 if [ "$failures" -eq 0 ]; then
     echo ""
@@ -96,5 +143,6 @@ if [ "$failures" -eq 0 ]; then
 else
     echo ""
     echo "$failures test(s) FAILED."
-    exit 1
 fi
+echo "RESULT: pass=$passes fail=$failures"
+[ "$failures" -eq 0 ] || exit 1

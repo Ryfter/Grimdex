@@ -33,6 +33,7 @@ function Get-GrimdexInboxStatus {
         $content = Get-Content $f.FullName -Raw
         $candidates = @([regex]::Matches($content, '(?m)^## ')).Count
         if ($candidates -eq 0) { continue }
+        $recommendations = @([regex]::Matches($content, '(?m)^\*\*Kind:\*\*\s*recommendation\s*$')).Count
         # age from the oldest **Filed:** date when present, else file mtime
         $filed = [regex]::Matches($content, '\*\*Filed:\*\*\s*(\d{4}-\d{2}-\d{2})') |
             ForEach-Object { [datetime]$_.Groups[1].Value } | Sort-Object | Select-Object -First 1
@@ -41,6 +42,7 @@ function Get-GrimdexInboxStatus {
             file = $f.FullName
             project = [IO.Path]::GetFileNameWithoutExtension($f.Name)
             candidates = $candidates
+            recommendations = $recommendations
             oldestDays = [int]((Get-Date) - $oldest).TotalDays
         }
     }
